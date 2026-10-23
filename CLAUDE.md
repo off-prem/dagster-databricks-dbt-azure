@@ -23,7 +23,7 @@ Read `docs/03-runbook.md` first. It is the source of truth for what is done and 
 - When something fails, read the error, fix the root cause, and note any gotcha in the runbook step's "Notes" line.
 
 ## Repo map
-- `docs/` — architecture, services, runbook, conventions, CI/CD, stop/start, decisions, corporate migration
+- `docs/` — quickstart checklist, architecture, services, runbook, conventions, CI/CD, stop/start, decisions, corporate migration
 - `infra/` — Terraform. `bootstrap/` (once), `shared/` (singletons), `env/` (applied per env), `modules/`
 - `dagster/` — one code location, one image
 - `databricks/` — Databricks Asset Bundle (SDP pipeline), targets `stage`/`prod`
