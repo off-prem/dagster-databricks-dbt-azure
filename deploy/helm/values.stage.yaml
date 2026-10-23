@@ -1,8 +1,9 @@
-# Only environment-specific values. Diff against values.prod.yaml must be trivial.
+# Stage environment values. Diff against values.prod.yaml must be trivial.
+# Per-user values are overridden by scripts/helm-upgrade.sh from .env.
 global:
   postgresqlSecretName: dagster-postgres
 postgresql:
-  postgresqlHost: ""        # pg-dagsterpoc.postgres.database.azure.com
+  postgresqlHost: ""        # overridden: ${PG_FQDN}
   postgresqlDatabase: dagster_stage
   postgresqlUsername: dagster_stage
 dagster-user-deployments:
@@ -11,13 +12,13 @@ dagster-user-deployments:
       env:
         - name: DAGSTER_ENV
           value: stage
-        - name: DATABRICKS_HOST
-          value: ""         # https://adb-....azuredatabricks.net
         - name: DBX_CATALOG
           value: stage
+        - name: DATABRICKS_HOST
+          value: ""         # overridden: ${DBX_STAGE_HOST}
         - name: DBX_BRONZE_PIPELINE_ID
-          value: ""
+          value: ""         # overridden: ${DBX_STAGE_PIPELINE_ID}
         - name: DBX_WAREHOUSE_HTTP_PATH
-          value: ""
+          value: ""         # overridden: ${DBX_STAGE_WAREHOUSE_HTTP_PATH}
       envSecrets:
         - name: dagster-dbx-stage     # synced by SecretProviderClass

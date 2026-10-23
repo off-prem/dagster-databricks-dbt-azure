@@ -1,6 +1,6 @@
 # Dagster chart base values — shared by stage and prod. Claude completes in Phase 2.6.
-# Key points (see docs/04-conventions.md): external Postgres, ClusterIP webserver, K8sRunLauncher,
-# one user deployment `poc`, workload identity labels, env from CSI-synced Secret.
+# Per-user values (image repo, Postgres host) are overridden by scripts/helm-upgrade.sh
+# from .env — they are never committed with real values.
 postgresql:
   enabled: false
 generatePostgresqlPasswordSecret: false
@@ -14,8 +14,8 @@ dagster-user-deployments:
   deployments:
     - name: poc
       image:
-        repository: ""   # <acr>.azurecr.io/poc
-        tag: ""          # set by CI
+        repository: ""   # overridden: ${ACR_LOGIN_SERVER}/poc
+        tag: ""          # overridden: set by CI or scripts/helm-upgrade.sh
         pullPolicy: IfNotPresent
       dagsterApiGrpcArgs: ["-m", "poc.definitions"]
       port: 3030

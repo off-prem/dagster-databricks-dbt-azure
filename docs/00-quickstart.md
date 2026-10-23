@@ -21,35 +21,35 @@ Expect roughly $50–100/month while it runs (`02-services-and-costs.md`). Stop 
 - [ ] **[You]** Run `scripts/setup-tools.sh`; put `~/.local/bin` on your `PATH`. (0.3)
 - [ ] **[You]** Create the Azure free account. Run `az login`, then
       `az account show --query "{subscription:id, tenant:tenantId}" -o tsv`. (0.1)
-- [ ] **[You]** One-time: add the direnv hook to your shell rc (`setup-tools.sh` prints the line), then open a new shell.
-- [ ] **[You]** Run `scripts/setup-env.sh`, then `direnv allow` in the repo. The first writes your subscription, tenant,
-      public IP, repo and owner to a git-ignored `.env` (nothing personal is committed); the second makes direnv
-      load it automatically whenever you enter the repo. Re-run `setup-env.sh` if your IP changes (direnv reloads).
-      Without direnv: `source scripts/load-env.sh` in each shell.
+- [ ] **[You]** Run `just setup-env`. This detects your subscription, tenant, public IP, repo and owner,
+      and scaffolds every future key as blank (nothing personal is committed; see `.env.example` for the full list).
+      The `justfile` loads `.env` automatically for every `just` command — no shell hook needed.
+      Re-run `just setup-env` if your IP changes. Run `just --list` to see all available commands.
 - [ ] **[Claude Code]** Register the Azure resource providers. (0.4)
-- [ ] **[Claude Code]** Terraform bootstrap: state storage plus the GitHub OIDC app. Keep its client ID. (0.5)
+- [ ] **[Claude Code]** Terraform bootstrap: state storage plus the GitHub OIDC app. `scripts/setup-env.sh collect-tf bootstrap` captures the client ID. (0.5)
 - [ ] **[You]** GitHub → Settings → Variables: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
       Create Environments `stage` and `prod`; add yourself as required reviewer on `prod`. (0.6)
 - [ ] **[Claude Code]** Point `infra/shared` and `infra/env` at the state backend; `terraform init`. (0.7)
 - [ ] `git mv ci/pending-workflows/pr-checks.yml .github/workflows/`; a test PR should pass `az login`.
 
 ## 2. Shared infrastructure (Phase 1)
-- [ ] **[Claude Code]** Apply `infra/shared`: network, ACR, Key Vault, Postgres, ADLS, then AKS and firewalls. (1.1–1.3)
+- [ ] **[Claude Code]** Apply `infra/shared`: network, ACR, Key Vault, Postgres, ADLS, then AKS and firewalls. `collect-tf shared` captures outputs. (1.1–1.3)
 - [ ] **[Claude Code]** Verify `kubectl get nodes` is Ready and Postgres is reachable. (1.4)
 - [ ] **[Claude Code]** Fill the `scripts/` helpers; `scripts/stop.sh && scripts/start.sh` round-trips. (1.5)
 
 ## 3. Stage (Phase 2): Goal 1
-- [ ] **[Claude Code]** Apply `infra/env` with `stage.tfvars`: Databricks workspace, identity, Postgres DB, namespace. (2.1)
+- [ ] **[Claude Code]** Apply `infra/env` with `stage.tfvars`: Databricks workspace, identity, Postgres DB, namespace. `collect-tf env-stage` captures outputs. (2.1)
 - [ ] **[You]** Open the workspace URL, log in, accept the trial. Bring back workspace URL and ID. (2.2)
 - [ ] **[You]** accounts.azuredatabricks.net → create the Unity Catalog metastore and assign it to the
       stage workspace. Bring back the metastore ID. (2.3)
 - [ ] **[Claude Code]** Workspace objects: catalog, schemas, warehouse, service principal, secrets in Key Vault. (2.4)
-- [ ] **[Claude Code]** Build the Dagster image, install via Helm, port-forward. (2.5–2.7)
+- [ ] **[Claude Code]** Build the Dagster image, deploy via `scripts/helm-upgrade.sh stage`, port-forward. (2.5–2.7)
 - [ ] **Check:** `scripts/port-forward.sh stage`, open http://localhost:3000, materialize `databricks_whoami`.
 
 ## 4. The two assets (Phase 3): Goal 2
 - [ ] **[You]** Pick a public source API; if it needs a key, put it in Key Vault as `source-api-key`. (3.1)
-- [ ] **[Claude Code]** Databricks bundle, `bronze` asset, dbt model, `silver` asset, image rebuild and Helm upgrade. (3.2–3.6)
+- [ ] **[Claude Code]** Databricks bundle (`scripts/bundle-deploy.sh stage`, then `collect-bundle stage`),
+      `bronze` asset, dbt model, `silver` asset, image rebuild and `scripts/helm-upgrade.sh stage`. (3.2–3.6)
 - [ ] **Check:** `select count(*) from stage.silver.silver_<model>` > 0, and Dagster shows both assets with lineage.
 
 ## 5. Prod and CI/CD (Phases 4–5): Goals 3 and 4
