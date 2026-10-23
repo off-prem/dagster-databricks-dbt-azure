@@ -30,7 +30,7 @@ Read `docs/03-runbook.md` first. It is the source of truth for what is done and 
 - `dbt/` — dbt project targeting a Databricks SQL warehouse
 - `deploy/helm/` — Dagster Helm values (base + per env); `deploy/k8s/` — SecretProviderClass etc.
 - `scripts/` — start/stop, smoke test, port-forward
-- `.github/workflows/` — pr-checks (live); `ci/pending-workflows/` — deploy-stage, promote-prod (parked until Phase 5.2/5.3, then `git mv` into `.github/workflows/`)
+- `ci/pending-workflows/` — pr-checks, deploy-stage, promote-prod (parked; `git mv` into `.github/workflows/` at Phase 0.6 for pr-checks, 5.2/5.3 for the others)
 
 ## Key commands
 ```

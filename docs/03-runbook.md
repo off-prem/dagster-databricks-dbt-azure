@@ -28,14 +28,14 @@ Values you collect go into `infra/env/<env>.tfvars` or `deploy/helm/values.<env>
   Contributor + User Access Administrator on the subscription (tighten later). Output client ID.
   Local state for this one stack is acceptable; commit nothing sensitive.
   Notes:
-- [ ] **0.6 [MANUAL] GitHub variables.** Repo → Settings → Secrets and variables → Actions → Variables:
+- [ ] **0.6 [MANUAL] GitHub variables.** (Then `git mv ci/pending-workflows/pr-checks.yml .github/workflows/`.) Repo → Settings → Secrets and variables → Actions → Variables:
   `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`. Create Environments `stage` and
   `prod`; on `prod` add yourself as a required reviewer.
 - [ ] **0.7 [CLAUDE] Backend config.** Point `infra/shared` and `infra/env` at the tfstate backend
   (`key = shared.tfstate`, `key = <env>.tfstate`). `terraform init` both.
 
 **Done when:** `az account show` works, `terraform init` succeeds in `infra/shared` and `infra/env`,
-GitHub variables are set, `.github/workflows/pr-checks.yml` passes `az login` via OIDC on a test PR.
+GitHub variables are set, `pr-checks.yml` (moved from `ci/pending-workflows/` to `.github/workflows/` in 0.6) passes `az login` via OIDC on a test PR.
 
 ---
 
