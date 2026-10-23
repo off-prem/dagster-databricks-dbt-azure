@@ -1,0 +1,17 @@
+name: deploy-stage
+on: { push: { branches: [main] } }
+permissions: { id-token: write, contents: read }
+concurrency: { group: deploy-stage, cancel-in-progress: false }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: stage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # TODO (Phase 5.2): az acr build :${{ github.sha }} → helm upgrade dagster-stage → bundle deploy -t stage → scripts/smoke-test.sh stage
+      - run: echo "deploy-stage skeleton — see docs/05-cicd.md"

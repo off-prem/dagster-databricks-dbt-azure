@@ -1,0 +1,15 @@
+name: pr-checks
+on: { pull_request: { branches: [main] } }
+permissions: { id-token: write, contents: read, pull-requests: write }
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # TODO (Phase 5.1): terraform fmt/validate/plan(stage), bundle validate, dbt parse, dg check defs, pytest, docker build
+      - run: echo "pr-checks skeleton — see docs/05-cicd.md"

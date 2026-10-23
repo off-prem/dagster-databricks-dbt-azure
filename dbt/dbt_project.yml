@@ -1,0 +1,9 @@
+name: poc
+version: "0.1.0"
+profile: poc
+model-paths: ["models"]
+models:
+  poc:
+    silver:
+      +materialized: table
+      +schema: silver
