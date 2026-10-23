@@ -5,18 +5,18 @@ Source of truth for progress. Each step is tagged **[CLAUDE]** (Claude Code exec
 Check boxes as you go. Each phase ends with a **Done when** check.
 
 Conventions: `<env>` ∈ {stage, prod}. Region `eastus2` unless changed in `04-conventions.md`.
-Values you collect go into `infra/env/<env>.tfvars` or `deploy/helm/values.<env>.yaml` — never secrets.
+Shared values go into `infra/env/<env>.tfvars` or `deploy/helm/values.<env>.yaml`; per-user values (subscription, tenant, IP) come from `source scripts/tf-env.sh`, and account outputs (e.g. metastore ID) go in gitignored `infra/env/local.auto.tfvars` — never secrets.
 
 ---
 
 ## Phase 0 — Accounts and bootstrap
 
-- [ ] **0.1 [MANUAL] Azure account.** Create a free Azure account at azure.microsoft.com/free. Note the
+- [x] **0.1 [MANUAL] Azure account.** Create a free Azure account at azure.microsoft.com/free. Note the
   $200/30-day credit and 12-month free services (B1ms Postgres, B-series VM hours may apply).
   Bring back: **Subscription ID**, **Tenant ID** (`az account show`).
 - [x] **0.2 [MANUAL] GitHub.** Create an org (or use personal), create this repo, push.
-  Bring back: **org/repo** name. Notes: done — `off-prem/dagster-databricks-dbt-azure`.
-- [ ] **0.3 [MANUAL] Local tools.** Run `scripts/setup-tools.sh` (installs the pins in `.tool-versions`; binaries go to `~/.local/bin` (ensure it is on PATH); `az` uses Microsoft's apt repo on Debian/Ubuntu (needs sudo), else pip — override with `AZ_INSTALL=apt|brew|pip`).
+  Bring back: **org/repo** name.
+- [x] **0.3 [MANUAL] Local tools.** Run `scripts/setup-tools.sh` (installs the pins in `.tool-versions`; binaries go to `~/.local/bin` (ensure it is on PATH); `az` uses Microsoft's apt repo on Debian/Ubuntu (needs sudo), else pip — override with `AZ_INSTALL=apt|brew|pip`).
   Run `az login`, `az account set --subscription <id>`. Claude verifies versions against `.tool-versions`.
 - [ ] **0.4 [CLAUDE] Register resource providers.**
   `Microsoft.Databricks`, `Microsoft.ContainerService`, `Microsoft.ContainerRegistry`,
@@ -144,7 +144,7 @@ materialized with lineage. **→ Goal 2 achieved.**
   `bundle deploy -t prod`, `scripts/smoke-test.sh prod`.
 - [ ] **5.4 [MANUAL] Approve the first prod promotion** in GitHub → Actions.
 - [ ] **5.5 [CLAUDE] Harden.** Restrict the GitHub app's RBAC to the three RGs + ACR + AKS user role.
-  Add `CODEOWNERS`.
+  Copy `.github/CODEOWNERS.example` to `.github/CODEOWNERS` with your handle/team.
 
 **Done when:** a trivial PR (e.g., a dbt model comment) flows main → stage → approval → prod with no
 manual steps other than the approval. **→ Goal 4 achieved.**

@@ -11,6 +11,7 @@ Read `docs/03-runbook.md` first. It is the source of truth for what is done and 
 - **No secrets in the repo.** Secrets live in Azure Key Vault and are mounted via the Secrets Store CSI driver. GitHub holds IDs only (tenant, subscription, client ID), never secrets.
 - **Everything is parametrized by `env`.** Workspace URL, catalog, namespace, Postgres DB name, image tag all come from tfvars / Helm values / bundle targets. Never hardcode an environment-specific value in `dagster/`, `dbt/`, or `databricks/src/`.
 - **Promote, don't rebuild.** Prod gets the exact image digest and bundle that passed on stage.
+- **Nothing unique to one person or account is committed.** The repo is a blueprint others will clone. No personal handles, subscription/tenant IDs, IPs or org names in tracked files. Per-user values come from `source scripts/tf-env.sh` (TF_VAR_*), gitignored `*.auto.tfvars`, or GitHub repo variables in CI.
 - **Lean.** Build only what `docs/02-services-and-costs.md` lists. No VPN, no private endpoints, no Premium ACR, no second AKS cluster. If something seems missing, check `docs/07-decisions.md` before adding it.
 
 ## Rules for Claude Code
@@ -45,7 +46,7 @@ scripts/stop.sh / scripts/start.sh         # cost control
 
 ## Current state
 <!-- Update after every phase. A fresh session reads this first. -->
-- Phase: 0 (not started)
-- Last completed step: none
+- Phase: 0 (in progress)
+- Last completed step: 0.3 (0.1, 0.2 done; 0.4 providers registration requested, not yet verified)
 - Known blockers: none
-- Values collected so far: see `infra/env/stage.tfvars` (no secrets)
+- Values collected so far: none committed; per-user values come from `scripts/tf-env.sh` and gitignored `infra/env/local.auto.tfvars`

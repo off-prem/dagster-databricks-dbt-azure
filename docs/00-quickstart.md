@@ -16,8 +16,8 @@ Expect roughly $50–100/month while it runs (`02-services-and-costs.md`). Stop 
 - [ ] **[You]** Run `scripts/setup-tools.sh`; put `~/.local/bin` on your `PATH`. (0.3)
 - [ ] **[You]** Create the Azure free account. Run `az login`, then
       `az account show --query "{subscription:id, tenant:tenantId}" -o tsv`. (0.1)
-- [ ] **[You]** Fill `subscription_id`, `tenant_id` and `my_ip_cidr` (`curl -s ifconfig.me`, as `x.x.x.x/32`) in
-      `infra/env/stage.tfvars`. IDs only, never secrets.
+- [ ] **[You]** Before any Terraform command run `source scripts/tf-env.sh`. It exports your subscription, tenant
+      and public IP as `TF_VAR_*`, so nothing personal is committed. Re-run it if your IP changes.
 - [ ] **[Claude Code]** Register the Azure resource providers. (0.4)
 - [ ] **[Claude Code]** Terraform bootstrap: state storage plus the GitHub OIDC app. Keep its client ID. (0.5)
 - [ ] **[You]** GitHub → Settings → Variables: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
