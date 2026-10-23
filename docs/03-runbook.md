@@ -5,7 +5,7 @@ Source of truth for progress. Each step is tagged **[CLAUDE]** (Claude Code exec
 Check boxes as you go. Each phase ends with a **Done when** check.
 
 Conventions: `<env>` ∈ {stage, prod}. Region `eastus2` unless changed in `04-conventions.md`.
-Shared values go into `infra/env/<env>.tfvars` or `deploy/helm/values.<env>.yaml`; per-user values (subscription, tenant, IP) come from `source scripts/tf-env.sh`, and account outputs (e.g. metastore ID) go in gitignored `infra/env/local.auto.tfvars` — never secrets.
+Shared values go into `infra/env/<env>.tfvars` or `deploy/helm/values.<env>.yaml`; per-user values (subscription, tenant, IP, repo, owner) are generated into the git-ignored `.env` by `scripts/setup-env.sh`, and account outputs are added with `scripts/setup-env.sh set KEY VALUE` — never secrets. Load with `source scripts/load-env.sh` before Terraform.
 
 ---
 
@@ -71,7 +71,7 @@ GitHub variables are set, `pr-checks.yml` (moved from `ci/pending-workflows/` to
 - [ ] **2.3 [MANUAL] Unity Catalog metastore** (first env only). accounts.azuredatabricks.net →
   Catalog → Create metastore: region, ADLS path `abfss://metastore@<acct>.dfs.core.windows.net/`,
   Access Connector resource ID from 2.1. Assign to the stage workspace.
-  Bring back: **metastore ID**. (Later: Terraform `databricks_metastore` can own this; for POC, import it.)
+  Bring back: **metastore ID** (then `scripts/setup-env.sh set TF_VAR_metastore_id <id>`). (Later: Terraform `databricks_metastore` can own this; for POC, import it.)
 - [ ] **2.4 [CLAUDE] Workspace objects via Terraform** (databricks provider, auth via `az` CLI):
   storage credential + external locations `bronze`/`silver`; catalog `stage`; schemas `bronze`,
   `silver`, `ops`; volume `ops.dagster_pipes`; SQL warehouse (serverless 2X-Small, auto-stop 5);

@@ -13,6 +13,7 @@ infra/env/prod.tfvars
 # Secrets / local env
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 .databrickscfg

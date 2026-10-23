@@ -24,6 +24,7 @@ scripts/setup-tools.sh
   `AZ_INSTALL=apt|brew|pip scripts/setup-tools.sh`.
 - To change a version, edit `.tool-versions` and re-run the script.
 
-Then continue with `docs/00-quickstart.md` from the account setup.
+After `az login`, generate your per-user settings (git-ignored `.env`) with `scripts/setup-env.sh`,
+then continue with `docs/00-quickstart.md`.
 
 Built with Claude Code; `CLAUDE.md` holds its operating rules.
