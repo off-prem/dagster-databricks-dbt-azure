@@ -13,6 +13,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# setup-tools.sh installs here; a fresh shell may not have it on PATH yet.
+export PATH="${HOME}/.local/bin:${PATH}"
 ENV_FILE="${ROOT}/.env"
 
 env_set() { # env_set KEY VALUE  (idempotent, in-place)
@@ -37,6 +39,7 @@ detect() {
   sub="$(az account show --query id -o tsv)"
   tenant="$(az account show --query tenantId -o tsv)"
   ip="${MY_IP_CIDR:-$(curl -fsS https://ifconfig.me)/32}" || die "Could not detect public IP; set MY_IP_CIDR=x.x.x.x/32."
+  # origin must be YOUR repo (fork / copy), not the blueprint you cloned: OIDC trust is granted to this repo.
   repo="${GITHUB_REPO:-$(git -C "${ROOT}" remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]([^/]+/[^/]+)$#\1#; s#\.git$##')}"
   [ -n "${repo}" ] || die "No git remote 'origin'; set GITHUB_REPO=org/repo."
   owner="${OWNER:-$(git -C "${ROOT}" config user.name || true)}"

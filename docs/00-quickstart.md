@@ -10,7 +10,12 @@ Expect roughly $50–100/month while it runs (`02-services-and-costs.md`). Stop 
 ## 0. Prerequisites
 - [ ] An email and a card for an Azure free account, a GitHub account, and rights to create a repo or fork.
 - [ ] Linux, WSL or macOS with `git`, `curl` and `python3`.
-- [ ] Fork or clone this repo and work on branches. Never commit to `main`; merge by PR.
+- [ ] Create **your own** copy of this repo (GitHub fork, or "Use this template") and clone *that*, so `origin` is yours.
+      Terraform grants GitHub OIDC access to the repo in `origin`; cloning the original would trust the wrong repo.
+      Work on branches; never commit to `main`; merge by PR.
+- [ ] Know that the Terraform, Helm, Dagster, bundle and dbt code is built step by step by Claude Code from the runbook
+      (phases 1+ are not pre-written). You need [Claude Code](https://claude.com/claude-code), or you write those
+      pieces yourself following `docs/01-architecture.md`, `04-conventions.md` and the runbook.
 
 ## 1. Tools and accounts (Phase 0)
 - [ ] **[You]** Run `scripts/setup-tools.sh`; put `~/.local/bin` on your `PATH`. (0.3)
