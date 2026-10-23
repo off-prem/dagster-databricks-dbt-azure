@@ -1,0 +1,21 @@
+# Dagster chart base values — shared by stage and prod. Claude completes in Phase 2.6.
+# Key points (see docs/04-conventions.md): external Postgres, ClusterIP webserver, K8sRunLauncher,
+# one user deployment `poc`, workload identity labels, env from CSI-synced Secret.
+postgresql:
+  enabled: false
+generatePostgresqlPasswordSecret: false
+dagsterWebserver:
+  service:
+    type: ClusterIP
+runLauncher:
+  type: K8sRunLauncher
+dagster-user-deployments:
+  enabled: true
+  deployments:
+    - name: poc
+      image:
+        repository: ""   # <acr>.azurecr.io/poc
+        tag: ""          # set by CI
+        pullPolicy: IfNotPresent
+      dagsterApiGrpcArgs: ["-m", "poc.definitions"]
+      port: 3030

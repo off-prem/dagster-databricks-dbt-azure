@@ -1,0 +1,23 @@
+# Only environment-specific values. Diff against values.prod.yaml must be trivial.
+global:
+  postgresqlSecretName: dagster-postgres
+postgresql:
+  postgresqlHost: ""        # pg-dagsterpoc.postgres.database.azure.com
+  postgresqlDatabase: dagster_prod
+  postgresqlUsername: dagster_prod
+dagster-user-deployments:
+  deployments:
+    - name: poc
+      env:
+        - name: DAGSTER_ENV
+          value: prod
+        - name: DATABRICKS_HOST
+          value: ""         # https://adb-....azuredatabricks.net
+        - name: DBX_CATALOG
+          value: prod
+        - name: DBX_BRONZE_PIPELINE_ID
+          value: ""
+        - name: DBX_WAREHOUSE_HTTP_PATH
+          value: ""
+      envSecrets:
+        - name: dagster-dbx-prod     # synced by SecretProviderClass

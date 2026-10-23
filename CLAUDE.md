@@ -1,0 +1,51 @@
+# Dagster on AKS → Azure Databricks POC
+
+Proof of concept: Dagster (OSS, Helm on AKS) orchestrates Azure Databricks.
+One SDP pipeline ingests an API into a `bronze` table; one dbt model builds `silver`.
+Two environments (stage, prod); CI promotes main → stage → prod.
+
+Read `docs/03-runbook.md` first. It is the source of truth for what is done and what is next.
+
+## Non-negotiables
+- **No public ingress.** Dagster UI is ClusterIP only, reached via `kubectl port-forward`. Never create an Ingress or `type: LoadBalancer` Service for Dagster.
+- **No secrets in the repo.** Secrets live in Azure Key Vault and are mounted via the Secrets Store CSI driver. GitHub holds IDs only (tenant, subscription, client ID), never secrets.
+- **Everything is parametrized by `env`.** Workspace URL, catalog, namespace, Postgres DB name, image tag all come from tfvars / Helm values / bundle targets. Never hardcode an environment-specific value in `dagster/`, `dbt/`, or `databricks/src/`.
+- **Promote, don't rebuild.** Prod gets the exact image digest and bundle that passed on stage.
+- **Lean.** Build only what `docs/02-services-and-costs.md` lists. No VPN, no private endpoints, no Premium ACR, no second AKS cluster. If something seems missing, check `docs/07-decisions.md` before adding it.
+
+## Rules for Claude Code
+- Before any step that needs the Azure portal, Databricks account console, a browser login, a trial acceptance, or pasting a credential: **stop and hand it to the user** with exact click-by-click instructions and tell them what value(s) to bring back.
+- Never commit or push directly to `main` (no branch protection on the private repo, so this is a convention). Work on a branch and merge via PR.
+- Never run `terraform apply` or `helm upgrade` against **prod** without the user's explicit go-ahead in the same session.
+- After completing a runbook step, check it off in `docs/03-runbook.md` and update `## Current state` below.
+- Prefer `az`, `terraform`, `helm`, `databricks`, `dbt`, `dg` CLIs over ad-hoc REST calls or SDK scripts.
+- Pin versions. Use `uv` for Python. Use the versions in `.tool-versions`.
+- When something fails, read the error, fix the root cause, and note any gotcha in the runbook step's "Notes" line.
+
+## Repo map
+- `docs/` — architecture, services, runbook, conventions, CI/CD, stop/start, decisions, corporate migration
+- `infra/` — Terraform. `bootstrap/` (once), `shared/` (singletons), `env/` (applied per env), `modules/`
+- `dagster/` — one code location, one image
+- `databricks/` — Databricks Asset Bundle (SDP pipeline), targets `stage`/`prod`
+- `dbt/` — dbt project targeting a Databricks SQL warehouse
+- `deploy/helm/` — Dagster Helm values (base + per env); `deploy/k8s/` — SecretProviderClass etc.
+- `scripts/` — start/stop, smoke test, port-forward
+- `ci/pending-workflows/` — pr-checks, deploy-stage, promote-prod (parked; `git mv` into `.github/workflows/` at Phase 0.6 for pr-checks, 5.2/5.3 for the others)
+
+## Key commands
+```
+terraform -chdir=infra/env init && terraform -chdir=infra/env plan -var-file=stage.tfvars
+helm upgrade --install dagster-stage dagster/dagster -n dagster-stage -f deploy/helm/values.base.yaml -f deploy/helm/values.stage.yaml
+databricks bundle deploy -t stage          # from databricks/
+dbt build --target stage                   # from dbt/
+dg check defs                              # from dagster/
+scripts/port-forward.sh stage              # Dagster UI at http://localhost:3000
+scripts/stop.sh / scripts/start.sh         # cost control
+```
+
+## Current state
+<!-- Update after every phase. A fresh session reads this first. -->
+- Phase: 0 (not started)
+- Last completed step: none
+- Known blockers: none
+- Values collected so far: see `infra/env/stage.tfvars` (no secrets)

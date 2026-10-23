@@ -1,0 +1,9 @@
+# Pin at project start; Claude Code should install/verify these before Phase 0.
+# Update versions to current stable when bootstrapping, then leave them alone for the POC.
+terraform 1.9.x
+helm 3.16.x
+kubectl 1.31.x
+azure-cli 2.6x
+databricks-cli 0.2xx
+uv 0.5.x
+python 3.12.x

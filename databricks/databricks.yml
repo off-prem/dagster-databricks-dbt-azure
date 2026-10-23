@@ -1,0 +1,26 @@
+# Skeleton — Claude fills in Phase 3.2
+bundle:
+  name: dagsterpoc
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for this environment
+  source_url:
+    description: Source API URL
+
+include:
+  - resources/*.yml
+
+targets:
+  stage:
+    mode: production
+    workspace:
+      host: ""   # from Terraform output
+    variables:
+      catalog: stage
+  prod:
+    mode: production
+    workspace:
+      host: ""
+    variables:
+      catalog: prod
