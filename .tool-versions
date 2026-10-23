@@ -1,9 +1,9 @@
-# Pin at project start; Claude Code should install/verify these before Phase 0.
-# Update versions to current stable when bootstrapping, then leave them alone for the POC.
-terraform 1.9.x
-helm 3.16.x
-kubectl 1.31.x
-azure-cli 2.6x
-databricks-cli 0.2xx
-uv 0.5.x
-python 3.12.x
+# Exact pins. scripts/setup-tools.sh installs these into ~/.local/bin (single source of truth).
+# Bump deliberately; leave alone for the POC. kubectl must stay within one minor of the AKS version.
+terraform 1.17.0
+helm 3.22.1
+kubectl 1.36.5
+azure-cli 2.91.0
+databricks-cli 1.22.1
+uv 0.11.14
+python 3.12.13
