@@ -136,10 +136,10 @@ materialized with lineage. **→ Goal 2 achieved.**
 - [ ] **5.1 [CLAUDE] `pr-checks.yml`:** terraform fmt/validate + plan (stage), `databricks bundle
   validate`, `dbt parse` (no warehouse), `dg check defs`, `uv run pytest`, `az acr build --no-push`
   equivalent (docker build only).
-- [ ] **5.2 [CLAUDE] `deploy-stage.yml`** on push to `main`: `az acr build` tagged `${{ github.sha }}`
+- [ ] **5.2 [CLAUDE] `deploy-stage.yml`** (parked in `ci/pending-workflows/`; move to `.github/workflows/`) on push to `main`: `az acr build` tagged `${{ github.sha }}`
   → `helm upgrade dagster-stage --set ...image.tag=<sha>` → `bundle deploy -t stage` →
   `scripts/smoke-test.sh stage` (GraphQL launch of both assets, poll to success, 20-min timeout).
-- [ ] **5.3 [CLAUDE] `promote-prod.yml`** triggered by `workflow_run` success of deploy-stage,
+- [ ] **5.3 [CLAUDE] `promote-prod.yml`** (parked in `ci/pending-workflows/`; move to `.github/workflows/`) triggered by `workflow_run` success of deploy-stage,
   environment `prod` (required reviewer gate): same `<sha>` → `helm upgrade dagster-prod`,
   `bundle deploy -t prod`, `scripts/smoke-test.sh prod`.
 - [ ] **5.4 [MANUAL] Approve the first prod promotion** in GitHub → Actions.
