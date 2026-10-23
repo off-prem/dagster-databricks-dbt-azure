@@ -16,7 +16,7 @@ Values you collect go into `infra/env/<env>.tfvars` or `deploy/helm/values.<env>
   Bring back: **Subscription ID**, **Tenant ID** (`az account show`).
 - [x] **0.2 [MANUAL] GitHub.** Create an org (or use personal), create this repo, push.
   Bring back: **org/repo** name. Notes: done — `off-prem/dagster-databricks-dbt-azure`.
-- [ ] **0.3 [MANUAL] Local tools.** Install Azure CLI, Terraform, Helm, kubectl, Databricks CLI, uv.
+- [ ] **0.3 [MANUAL] Local tools.** Run `scripts/setup-tools.sh` (installs the pins in `.tool-versions`; binaries go to `~/.local/bin` (ensure it is on PATH); `az` uses Microsoft's apt repo on Debian/Ubuntu (needs sudo), else pip — override with `AZ_INSTALL=apt|brew|pip`).
   Run `az login`, `az account set --subscription <id>`. Claude verifies versions against `.tool-versions`.
 - [ ] **0.4 [CLAUDE] Register resource providers.**
   `Microsoft.Databricks`, `Microsoft.ContainerService`, `Microsoft.ContainerRegistry`,
