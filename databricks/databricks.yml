@@ -1,4 +1,7 @@
 # Skeleton — Claude fills in Phase 3.2
+# Workspace host is NOT committed; the bundle CLI reads DATABRICKS_HOST from the environment.
+# Set it before running: DATABRICKS_HOST=$DBX_STAGE_HOST databricks bundle deploy -t stage
+# Or use: scripts/bundle-deploy.sh stage
 bundle:
   name: dagsterpoc
 
@@ -14,13 +17,9 @@ include:
 targets:
   stage:
     mode: production
-    workspace:
-      host: ""   # from Terraform output
     variables:
       catalog: stage
   prod:
     mode: production
-    workspace:
-      host: ""
     variables:
       catalog: prod

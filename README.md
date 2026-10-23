@@ -24,6 +24,15 @@ scripts/setup-tools.sh
   `AZ_INSTALL=apt|brew|pip scripts/setup-tools.sh`.
 - To change a version, edit `.tool-versions` and re-run the script.
 
-Then continue with `docs/00-quickstart.md` from the account setup.
+After `az login`, generate your per-user settings (git-ignored `.env`) with `scripts/setup-env.sh`.
+It auto-detects your subscription, tenant, IP, repo and owner, and scaffolds every future key
+as blank (see `.env.example` for the full list). As you progress through the runbook, `collect-tf`
+and `collect-bundle` subcommands fill in values from Terraform outputs and bundle deploys — no
+manual copy-paste. Committed files reference these values via `TF_VAR_*`, `scripts/helm-upgrade.sh`,
+`scripts/bundle-deploy.sh`, and `dbt env_var()`. Nothing personal is ever committed.
+
+The `justfile` loads `.env` automatically — run `just --list` to see all commands.
+Without `just`, `source scripts/load-env.sh` in each shell.
+Then continue with `docs/00-quickstart.md`.
 
 Built with Claude Code; `CLAUDE.md` holds its operating rules.

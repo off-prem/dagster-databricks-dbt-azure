@@ -92,6 +92,38 @@ install_uv() {
   curl -fsSL "https://astral.sh/uv/${v}/install.sh" | UV_INSTALL_DIR="${BIN}" UV_NO_MODIFY_PATH=1 sh
 }
 
+install_jq() {
+  local v; v="$(ver jq)"
+  if have jq "jq-${v}" jq --version; then echo "jq ${v} ok"; return; fi
+  echo "Installing jq ${v}"
+  local suffix
+  case "${OS}-${ARCH}" in
+    linux-amd64)  suffix="linux-amd64"  ;;
+    linux-arm64)  suffix="linux-arm64"  ;;
+    darwin-amd64) suffix="macos-amd64"  ;;
+    darwin-arm64) suffix="macos-arm64"  ;;
+  esac
+  curl -fsSL -o "${TMP}/jq" "https://github.com/jqlang/jq/releases/download/jq-${v}/jq-${suffix}"
+  install -m 0755 "${TMP}/jq" "${BIN}/jq"
+}
+
+install_just() {
+  local v; v="$(ver just)"
+  if have just "${v}" just --version; then echo "just ${v} ok"; return; fi
+  echo "Installing just ${v}"
+  local target
+  case "${OS}-${ARCH}" in
+    linux-amd64)  target="x86_64-unknown-linux-musl" ;;
+    linux-arm64)  target="aarch64-unknown-linux-musl" ;;
+    darwin-amd64) target="x86_64-apple-darwin" ;;
+    darwin-arm64) target="aarch64-apple-darwin" ;;
+  esac
+  local tgz="just-${v}-${target}.tar.gz"
+  curl -fsSL -o "${TMP}/${tgz}" "https://github.com/casey/just/releases/download/${v}/${tgz}"
+  tar -xzf "${TMP}/${tgz}" -C "${TMP}" just
+  install -m 0755 "${TMP}/just" "${BIN}/just"
+}
+
 install_python() {
   local v; v="$(ver python)"
   echo "Ensuring python ${v}"
@@ -171,6 +203,11 @@ install_helm
 install_kubectl
 install_databricks
 install_azure_cli
+install_jq
+install_just
 
 echo
 echo "Done. Ensure ${BIN} is on your PATH (e.g. add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to ~/.bashrc)."
+echo
+echo "Run 'just --list' in the repo to see available commands."
+echo "The justfile loads .env automatically; no shell hook needed."

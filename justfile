@@ -1,0 +1,145 @@
+# Dagster on AKS → Azure Databricks POC
+# Run `just --list` to see all commands. The .env file is loaded automatically.
+
+set dotenv-load
+set dotenv-required := false
+
+export PATH := home_directory() / ".local/bin:" + env("PATH")
+
+# ── Setup ────────────────────────────────────────────────────────────────────
+
+# Install all CLI tools from .tool-versions
+setup-tools:
+    scripts/setup-tools.sh
+
+# Detect env values and scaffold all keys into .env
+setup-env:
+    scripts/setup-env.sh
+
+# Set a single key in .env
+set-env key value:
+    scripts/setup-env.sh set {{ key }} {{ value }}
+
+# Capture terraform outputs into .env
+collect-tf stack:
+    scripts/setup-env.sh collect-tf {{ stack }}
+
+# Capture pipeline ID into .env after bundle deploy
+collect-bundle env:
+    scripts/setup-env.sh collect-bundle {{ env }}
+
+# Print current .env values
+show-env:
+    @scripts/setup-env.sh show
+
+# ── Terraform ────────────────────────────────────────────────────────────────
+
+# terraform init (stack: bootstrap, shared, env-stage, env-prod)
+tf-init stack *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ stack }}" in
+      bootstrap) terraform -chdir=infra/bootstrap init {{ ARGS }} ;;
+      shared)    terraform -chdir=infra/shared init {{ ARGS }} ;;
+      env-stage) TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env init -backend-config="key=stage.tfstate" {{ ARGS }} ;;
+      env-prod)  TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env init -backend-config="key=prod.tfstate" {{ ARGS }} ;;
+      *) echo "Unknown stack '{{ stack }}'. Use: bootstrap, shared, env-stage, env-prod." >&2; exit 1 ;;
+    esac
+
+# terraform plan (stack: bootstrap, shared, env-stage, env-prod)
+tf-plan stack *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ stack }}" in
+      bootstrap) terraform -chdir=infra/bootstrap plan {{ ARGS }} ;;
+      shared)    terraform -chdir=infra/shared plan {{ ARGS }} ;;
+      env-stage) TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env plan -var-file=stage.tfvars {{ ARGS }} ;;
+      env-prod)  TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env plan -var-file=prod.tfvars {{ ARGS }} ;;
+      *) echo "Unknown stack '{{ stack }}'. Use: bootstrap, shared, env-stage, env-prod." >&2; exit 1 ;;
+    esac
+
+# terraform apply (stack: bootstrap, shared, env-stage, env-prod)
+tf-apply stack *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ stack }}" in
+      bootstrap) terraform -chdir=infra/bootstrap apply {{ ARGS }} ;;
+      shared)    terraform -chdir=infra/shared apply {{ ARGS }} ;;
+      env-stage) TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env apply -var-file=stage.tfvars {{ ARGS }} ;;
+      env-prod)  TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env apply -var-file=prod.tfvars {{ ARGS }} ;;
+      *) echo "Unknown stack '{{ stack }}'. Use: bootstrap, shared, env-stage, env-prod." >&2; exit 1 ;;
+    esac
+
+# ── Helm ─────────────────────────────────────────────────────────────────────
+
+# Deploy Dagster via Helm with per-user values from .env
+helm-upgrade env *ARGS:
+    scripts/helm-upgrade.sh {{ env }} {{ ARGS }}
+
+# ── Databricks Bundle ────────────────────────────────────────────────────────
+
+# Deploy the Databricks Asset Bundle (sets DATABRICKS_HOST from .env)
+bundle-deploy env *ARGS:
+    scripts/bundle-deploy.sh {{ env }} {{ ARGS }}
+
+# Validate the bundle without deploying
+bundle-validate env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{ env }}" = stage ]; then
+      export DATABRICKS_HOST="${DBX_STAGE_HOST:?DBX_STAGE_HOST is blank in .env}"
+    else
+      export DATABRICKS_HOST="${DBX_PROD_HOST:?DBX_PROD_HOST is blank in .env}"
+    fi
+    cd databricks && databricks bundle validate -t {{ env }}
+
+# ── dbt ──────────────────────────────────────────────────────────────────────
+
+# Run dbt commands against an environment (e.g. just dbt stage build)
+dbt env *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{ env }}" = stage ]; then
+      export DATABRICKS_HOST="${DBX_STAGE_HOST:-}"
+      export DBX_WAREHOUSE_HTTP_PATH="${DBX_STAGE_WAREHOUSE_HTTP_PATH:-}"
+      export DBX_SP_CLIENT_ID="${DBX_STAGE_SP_CLIENT_ID:-}"
+      export DBX_CATALOG=stage
+      export DAGSTER_ENV=stage
+    elif [ "{{ env }}" = prod ]; then
+      export DATABRICKS_HOST="${DBX_PROD_HOST:-}"
+      export DBX_WAREHOUSE_HTTP_PATH="${DBX_PROD_WAREHOUSE_HTTP_PATH:-}"
+      export DBX_SP_CLIENT_ID="${DBX_PROD_SP_CLIENT_ID:-}"
+      export DBX_CATALOG=prod
+      export DAGSTER_ENV=prod
+    else
+      echo "env must be 'stage' or 'prod'" >&2; exit 1
+    fi
+    cd dbt && dbt {{ ARGS }}
+
+# ── Dagster ──────────────────────────────────────────────────────────────────
+
+# Check Dagster definitions
+check-defs:
+    cd dagster && uv run dg check defs
+
+# Run Dagster tests
+test:
+    cd dagster && uv run pytest
+
+# ── Operations ───────────────────────────────────────────────────────────────
+
+# Port-forward to the Dagster UI (http://localhost:3000)
+port-forward env:
+    scripts/port-forward.sh {{ env }}
+
+# Run the post-deploy smoke test
+smoke-test env:
+    scripts/smoke-test.sh {{ env }}
+
+# Stop AKS and Postgres (cost control)
+stop:
+    scripts/stop.sh
+
+# Start AKS and Postgres
+start:
+    scripts/start.sh

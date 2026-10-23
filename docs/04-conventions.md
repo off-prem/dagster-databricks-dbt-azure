@@ -32,21 +32,21 @@ Tags on everything: `project=dagsterpoc`, `env=<env|shared>`, `owner=<you>`, `ma
   (`TF_DATA_DIR=.terraform-<env>`).
 - Providers: `azurerm`, `azuread`, `databricks` (account + workspace aliases), `random`.
 - Databricks provider auth: `az` CLI locally; in CI, `azure-client-id` with OIDC.
-- Module interfaces: inputs are plain values, not resource objects. Outputs feed Helm values via
-  `terraform output -json` → `scripts/render-values.sh` (optional).
+- Module interfaces: inputs are plain values, not resource objects. After every apply, run
+  `scripts/setup-env.sh collect-tf <stack>` to capture outputs into `.env`.
 - Never `-auto-approve` on prod.
 
 ## Helm (Dagster chart)
 - `values.base.yaml`: `postgresql.enabled: false`, `generatePostgresqlPasswordSecret: false`,
-  `postgresql.postgresqlHost/Database/Username` + `global.postgresqlSecretName`;
-  `dagster-user-deployments` with one deployment `poc`; `serviceAccount.create: true`;
-  webserver `service.type: ClusterIP`; `runLauncher: K8sRunLauncher`; resources ~
-  webserver 250m/512Mi, daemon 250m/512Mi, code server 250m/512Mi, run pods 500m/1Gi.
-- `values.<env>.yaml`: namespace-specific SA annotations (`azure.workload.identity/client-id`),
-  pod label `azure.workload.identity/use: "true"`, env vars from the SecretProviderClass-synced
-  Secret, and plain env: `DBX_CATALOG`, `DBX_BRONZE_PIPELINE_ID`, `DBX_WAREHOUSE_HTTP_PATH`,
-  `DATABRICKS_HOST`, `DAGSTER_ENV`.
-- Image tag always set by CI (`--set dagster-user-deployments.deployments[0].image.tag=<sha>`).
+  chart structure and resource limits; `dagster-user-deployments` with one deployment `poc`;
+  `serviceAccount.create: true`; webserver `service.type: ClusterIP`; `runLauncher: K8sRunLauncher`;
+  resources ~ webserver 250m/512Mi, daemon 250m/512Mi, code server 250m/512Mi, run pods 500m/1Gi.
+- `values.<env>.yaml`: fixed per-env values (`DAGSTER_ENV`, `DBX_CATALOG`, DB name/user, secret
+  names). Per-user values (`postgresqlHost`, `DATABRICKS_HOST`, `DBX_BRONZE_PIPELINE_ID`,
+  `DBX_WAREHOUSE_HTTP_PATH`, `image.repository`) are empty in the YAML and overridden by
+  `scripts/helm-upgrade.sh` from `.env`.
+- Deploy locally: `scripts/helm-upgrade.sh <env> [extra --set flags]`.
+- Image tag set by CI or extra flag: `scripts/helm-upgrade.sh stage --set ...image.tag=<sha>`.
 
 ## Dagster code
 - Package `poc` under `dagster/src/poc`; `definitions.py` is the only entry point.
@@ -58,9 +58,11 @@ Tags on everything: `project=dagsterpoc`, `env=<env|shared>`, `owner=<you>`, `ma
 
 ## Databricks Asset Bundle
 - `databricks.yml` targets `stage` and `prod`, `mode: production` on both, `run_as` the env SP.
+- Workspace host is NOT in the YAML; the bundle CLI reads `DATABRICKS_HOST` from `.env`.
+  Deploy via `scripts/bundle-deploy.sh <env>`, which sets the right host.
 - Variables: `catalog`, `warehouse_id`, `source_url`. Pipeline name `bronze_<source>_pipeline`.
 - Pipelines serverless, `development: false`, `continuous: false`, `edition: CORE`.
-- Pipeline ID is read after deploy: `databricks pipelines list-pipelines --filter "name LIKE 'bronze%'"`.
+- After deploy: `scripts/setup-env.sh collect-bundle <env>` captures the pipeline ID into `.env`.
 
 ## dbt
 - Adapter `dbt-databricks`. `profiles.yml` profile `poc`, targets `stage`/`prod` read
