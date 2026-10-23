@@ -92,6 +92,20 @@ install_uv() {
   curl -fsSL "https://astral.sh/uv/${v}/install.sh" | UV_INSTALL_DIR="${BIN}" UV_NO_MODIFY_PATH=1 sh
 }
 
+install_direnv() {
+  local v; v="$(ver direnv)"
+  if have direnv "${v}" direnv version; then echo "direnv ${v} ok"; return; fi
+  echo "Installing direnv ${v}"
+  local asset="direnv.${OS}-${ARCH}" api="https://api.github.com/repos/direnv/direnv/releases/tags/v${v}"
+  curl -fsSL -o "${TMP}/direnv" "https://github.com/direnv/direnv/releases/download/v${v}/${asset}"
+  # direnv publishes no checksum file; use the sha256 digest GitHub records for each release asset.
+  verify "${TMP}/direnv" "$(curl -fsSL "${api}" | python3 -c "
+import json, sys
+name = sys.argv[1]
+print(next(a['digest'].split(':', 1)[1] for a in json.load(sys.stdin)['assets'] if a['name'] == name))" "${asset}")"
+  install -m 0755 "${TMP}/direnv" "${BIN}/direnv"
+}
+
 install_python() {
   local v; v="$(ver python)"
   echo "Ensuring python ${v}"
@@ -171,6 +185,11 @@ install_helm
 install_kubectl
 install_databricks
 install_azure_cli
+install_direnv
 
 echo
 echo "Done. Ensure ${BIN} is on your PATH (e.g. add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to ~/.bashrc)."
+echo
+echo "To load .env automatically in this repo (one-time): add the hook for your shell to its rc file, then run 'direnv allow' in the repo."
+echo "  bash: echo 'eval \"\$(direnv hook bash)\"' >> ~/.bashrc"
+echo "  zsh:  echo 'eval \"\$(direnv hook zsh)\"' >> ~/.zshrc"

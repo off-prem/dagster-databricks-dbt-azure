@@ -5,7 +5,7 @@ Source of truth for progress. Each step is tagged **[CLAUDE]** (Claude Code exec
 Check boxes as you go. Each phase ends with a **Done when** check.
 
 Conventions: `<env>` ∈ {stage, prod}. Region `eastus2` unless changed in `04-conventions.md`.
-Shared values go into `infra/env/<env>.tfvars` or `deploy/helm/values.<env>.yaml`; per-user values (subscription, tenant, IP, repo, owner) are generated into the git-ignored `.env` by `scripts/setup-env.sh`, and account outputs are added with `scripts/setup-env.sh set KEY VALUE` — never secrets. Load with `source scripts/load-env.sh` before Terraform.
+Shared values go into `infra/env/<env>.tfvars` or `deploy/helm/values.<env>.yaml`; per-user values (subscription, tenant, IP, repo, owner) are generated into the git-ignored `.env` by `scripts/setup-env.sh`, and account outputs are added with `scripts/setup-env.sh set KEY VALUE` — never secrets. direnv (`.envrc`) loads it automatically on entering the repo; without direnv, `source scripts/load-env.sh`.
 
 ---
 

@@ -16,9 +16,11 @@ Expect roughly $50–100/month while it runs (`02-services-and-costs.md`). Stop 
 - [ ] **[You]** Run `scripts/setup-tools.sh`; put `~/.local/bin` on your `PATH`. (0.3)
 - [ ] **[You]** Create the Azure free account. Run `az login`, then
       `az account show --query "{subscription:id, tenant:tenantId}" -o tsv`. (0.1)
-- [ ] **[You]** Run `scripts/setup-env.sh`, then `source scripts/load-env.sh` (in every new shell before Terraform).
-      It writes your subscription, tenant, public IP, repo and owner to a git-ignored `.env`, so nothing personal
-      is committed. Re-run it if your IP changes.
+- [ ] **[You]** One-time: add the direnv hook to your shell rc (`setup-tools.sh` prints the line), then open a new shell.
+- [ ] **[You]** Run `scripts/setup-env.sh`, then `direnv allow` in the repo. The first writes your subscription, tenant,
+      public IP, repo and owner to a git-ignored `.env` (nothing personal is committed); the second makes direnv
+      load it automatically whenever you enter the repo. Re-run `setup-env.sh` if your IP changes (direnv reloads).
+      Without direnv: `source scripts/load-env.sh` in each shell.
 - [ ] **[Claude Code]** Register the Azure resource providers. (0.4)
 - [ ] **[Claude Code]** Terraform bootstrap: state storage plus the GitHub OIDC app. Keep its client ID. (0.5)
 - [ ] **[You]** GitHub → Settings → Variables: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.

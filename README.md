@@ -24,7 +24,9 @@ scripts/setup-tools.sh
   `AZ_INSTALL=apt|brew|pip scripts/setup-tools.sh`.
 - To change a version, edit `.tool-versions` and re-run the script.
 
-After `az login`, generate your per-user settings (git-ignored `.env`) with `scripts/setup-env.sh`,
-then continue with `docs/00-quickstart.md`.
+After `az login`, generate your per-user settings (git-ignored `.env`) with `scripts/setup-env.sh`.
+To load them automatically whenever you enter the repo, add the direnv hook that `setup-tools.sh` prints
+to your shell rc (one time), then run `direnv allow` in the repo. Without direnv, `source scripts/load-env.sh`.
+Then continue with `docs/00-quickstart.md`.
 
 Built with Claude Code; `CLAUDE.md` holds its operating rules.
