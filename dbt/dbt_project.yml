@@ -4,6 +4,9 @@ profile: poc
 model-paths: ["models"]
 models:
   poc:
+    bronze:
+      +materialized: streaming_table
+      +schema: bronze
     silver:
       +materialized: table
       +schema: silver

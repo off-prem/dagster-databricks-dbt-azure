@@ -1,4 +1,4 @@
-# Skeleton — Claude fills in Phase 3.2
+# Deploys ingestion code to the workspace for Dagster Pipes to submit.
 # Workspace host is NOT committed; the bundle CLI reads DATABRICKS_HOST from the environment.
 # Set it before running: DATABRICKS_HOST=$DBX_STAGE_HOST databricks bundle deploy -t stage
 # Or use: scripts/bundle-deploy.sh stage
@@ -8,11 +8,9 @@ bundle:
 variables:
   catalog:
     description: Unity Catalog catalog for this environment
-  source_url:
-    description: Source API URL
 
-include:
-  - resources/*.yml
+# include:
+#   - resources/*.yml
 
 targets:
   stage:

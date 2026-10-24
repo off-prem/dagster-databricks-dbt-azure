@@ -1,3 +1,9 @@
+variable "project" {
+  type        = string
+  default     = "dagster"
+  description = "Project name — used as prefix for all resource names"
+}
+
 variable "subscription_id" {
   type        = string
   description = "Azure subscription ID"
@@ -21,7 +27,7 @@ variable "owner" {
 
 locals {
   tags = {
-    project    = "dagster"
+    project    = var.project
     env        = "shared"
     owner      = var.owner
     managed_by = "terraform"

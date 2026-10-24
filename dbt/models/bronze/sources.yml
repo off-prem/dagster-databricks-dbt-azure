@@ -1,0 +1,6 @@
+sources:
+  - name: raw
+    description: Raw data landing zone in Databricks Volumes (written by Dagster Pipes)
+    tables:
+      - name: posts
+        description: JSON files from the posts API, ingested by the raw_posts asset

@@ -17,8 +17,12 @@ poc = "poc"
 [tool.uv]
 required-version = ">=0.11"
 
+
 [tool.dg]
-is_code_location = true
+directory_type = "project"
+
+[tool.dg.project]
+root_module = "poc"
 
 [tool.dagster]
 module_name = "poc"

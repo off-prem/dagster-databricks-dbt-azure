@@ -1,3 +1,9 @@
+variable "project" {
+  type        = string
+  default     = "dagster"
+  description = "Project name — used as prefix for all resource names"
+}
+
 variable "subscription_id" {
   type        = string
   description = "Azure subscription ID"
@@ -16,12 +22,14 @@ variable "location" {
 
 variable "shared_rg" {
   type        = string
-  description = "Shared resource group name (from tfvars)"
+  default     = ""
+  description = "Shared resource group name (defaults to rg-{project}-shared)"
 }
 
 variable "aks_name" {
   type        = string
-  description = "AKS cluster name (from tfvars)"
+  default     = ""
+  description = "AKS cluster name (defaults to aks-{project})"
 }
 
 variable "my_ip_cidr" {
@@ -35,8 +43,10 @@ variable "owner" {
 }
 
 locals {
+  shared_rg = var.shared_rg != "" ? var.shared_rg : "rg-${var.project}-shared"
+  aks_name  = var.aks_name != "" ? var.aks_name : "aks-${var.project}"
   tags = {
-    project    = "dagster"
+    project    = var.project
     env        = var.env
     owner      = var.owner
     managed_by = "terraform"
