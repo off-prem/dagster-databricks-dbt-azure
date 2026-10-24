@@ -38,11 +38,16 @@ show-env:
 tf-init stack *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
+    _backend() {
+      echo "-backend-config=storage_account_name=${TF_BACKEND_STORAGE_ACCOUNT:?Run just collect-tf bootstrap first}" \
+           "-backend-config=resource_group_name=${TF_BACKEND_RESOURCE_GROUP:?}" \
+           "-backend-config=container_name=tfstate"
+    }
     case "{{ stack }}" in
       bootstrap) terraform -chdir=infra/bootstrap init {{ ARGS }} ;;
-      shared)    terraform -chdir=infra/shared init {{ ARGS }} ;;
-      env-stage) TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env init -backend-config="key=stage.tfstate" {{ ARGS }} ;;
-      env-prod)  TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env init -backend-config="key=prod.tfstate" {{ ARGS }} ;;
+      shared)    terraform -chdir=infra/shared init $(_backend) -backend-config="key=shared.tfstate" {{ ARGS }} ;;
+      env-stage) TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env init $(_backend) -backend-config="key=stage.tfstate" {{ ARGS }} ;;
+      env-prod)  TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env init $(_backend) -backend-config="key=prod.tfstate" {{ ARGS }} ;;
       *) echo "Unknown stack '{{ stack }}'. Use: bootstrap, shared, env-stage, env-prod." >&2; exit 1 ;;
     esac
 
@@ -125,6 +130,12 @@ check-defs:
 # Run Dagster tests
 test:
     cd dagster && uv run pytest
+
+# ── Verification ────────────────────────────────────────────────────────────
+
+# Verify a phase is complete before proceeding (phase: 0-5)
+verify phase:
+    scripts/verify.sh {{ phase }}
 
 # ── Operations ───────────────────────────────────────────────────────────────
 
