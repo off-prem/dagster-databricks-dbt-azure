@@ -4,36 +4,60 @@ Lean proof of concept. Dagster runs on AKS via Helm; assets trigger a Databricks
 Spark Declarative Pipeline (API → bronze) and a dbt model (bronze → silver).
 Stage and prod environments; CI promotes merged PRs through them.
 
-New here? Start with [`docs/guide.md`](docs/guide.md) — step-by-step from fresh clone to
-fully running. Design rationale is in [`docs/decisions.md`](docs/decisions.md). Costs and
-scope are in [`docs/costs.md`](docs/costs.md). What changes when this moves into a
-corporate network is in [`docs/corporate-migration.md`](docs/corporate-migration.md).
+Start with [`docs/guide.md`](docs/guide.md) — step-by-step from fresh clone to fully
+running, with `just verify <phase>` gates between phases.
 
-## Getting started
+## Docs
 
-Install the CLIs (Linux or macOS). Versions come from `.tool-versions`:
+| Doc | What it covers |
+|-----|----------------|
+| [guide.md](docs/guide.md) | End-to-end setup walkthrough (start here) |
+| [architecture.md](docs/architecture.md) | System diagram and data flow |
+| [costs.md](docs/costs.md) | Monthly cost breakdown and scope |
+| [decisions.md](docs/decisions.md) | Design rationale and trade-offs |
+| [conventions.md](docs/conventions.md) | Naming, tagging, branching rules |
+| [corporate-migration.md](docs/corporate-migration.md) | What changes in a corporate network |
+| [tools/](docs/tools/) | Per-tool docs (terraform, helm, kubectl, dbt, …) |
+| [resources/](docs/resources/) | Per-resource docs (aks, postgres, key-vault, …) |
+| [concepts/](docs/concepts/) | Concept docs (cicd, oidc, unity-catalog, …) |
 
-```bash
-scripts/setup-tools.sh
+## Repo layout
+
+```
+infra/          Terraform — bootstrap/, shared/, env/, modules/
+dagster/        Dagster code location + Docker image
+databricks/     Databricks Asset Bundle (SDP pipeline)
+dbt/            dbt project (bronze → silver)
+deploy/         Helm values + K8s manifests
+scripts/        Setup, deploy, verify, start/stop helpers
+ci/             Pending CI workflows (activated via git mv)
+docs/           All documentation
 ```
 
-- Safe to re-run: a tool already at its pinned version is skipped, and nothing is reinstalled.
-- Binaries go to `~/.local/bin` with no `sudo`. Make sure that directory is on your `PATH`:
-  `export PATH="$HOME/.local/bin:$PATH"` in `~/.bashrc` or `~/.zshrc`.
-- `az` is installed from Microsoft's apt repo on Debian/Ubuntu (this step prompts for `sudo`),
-  via Homebrew on macOS, and from PyPI via `uv` elsewhere. Force one with
-  `AZ_INSTALL=apt|brew|pip scripts/setup-tools.sh`.
-- To change a version, edit `.tool-versions` and re-run the script.
+## Commands
 
-After `az login`, generate your per-user settings (git-ignored `.env`) with `scripts/setup-env.sh`.
-It auto-detects your subscription, tenant, IP, repo and owner, and scaffolds every future key
-as blank (see `.env.example` for the full list). As you progress through the guide, `collect-tf`
-and `collect-bundle` subcommands fill in values from Terraform outputs and bundle deploys — no
-manual copy-paste. Committed files reference these values via `TF_VAR_*`, `scripts/helm-upgrade.sh`,
-`scripts/bundle-deploy.sh`, and `dbt env_var()`. Nothing personal is ever committed.
+The `justfile` loads `.env` automatically. Run `just <command>`:
 
-The `justfile` loads `.env` automatically — run `just --list` to see all commands.
-Without `just`, `source scripts/load-env.sh` in each shell.
-Then continue with [`docs/guide.md`](docs/guide.md).
+| Command | What it does |
+|---------|-------------|
+| `setup-tools` | Install all CLIs from `.tool-versions` |
+| `setup-env` | Detect env values, scaffold all keys into `.env` |
+| `set-env <key> <value>` | Set a single key in `.env` |
+| `collect-tf <stack>` | Capture Terraform outputs into `.env` |
+| `collect-bundle <env>` | Capture pipeline ID after bundle deploy |
+| `show-env` | Print current `.env` values |
+| `tf-init <stack>` | `terraform init` (bootstrap, shared, env-stage, env-prod) |
+| `tf-plan <stack>` | `terraform plan` |
+| `tf-apply <stack>` | `terraform apply` |
+| `helm-upgrade <env>` | Deploy Dagster via Helm |
+| `bundle-deploy <env>` | Deploy the Databricks Asset Bundle |
+| `bundle-validate <env>` | Validate bundle without deploying |
+| `dbt <env> <args>` | Run dbt commands against an environment |
+| `check-defs` | Check Dagster definitions |
+| `test` | Run Dagster tests |
+| `verify <phase>` | Verify a phase is complete (0–5) |
+| `port-forward <env>` | Dagster UI at localhost:3000 |
+| `smoke-test <env>` | Post-deploy smoke test |
+| `stop` / `start` | Stop/start AKS + Postgres (cost control) |
 
 Built with Claude Code; `CLAUDE.md` holds its operating rules.

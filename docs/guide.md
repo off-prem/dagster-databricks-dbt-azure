@@ -54,8 +54,9 @@ resources are created yet.
 scripts/setup-tools.sh
 ```
 
-Installs pinned versions of all tools into `~/.local/bin`. See [tools/](tools/) for what
-each one does. Add the bin directory to your PATH:
+Installs pinned versions of all tools into `~/.local/bin` and runs `uv sync` in `dagster/`
+to set up its virtualenv (includes dbt). See [tools/](tools/) for what each tool does.
+Add the bin directory to your PATH:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -138,10 +139,24 @@ See [Terraform](tools/terraform.md) for what init/plan/apply do.
 Capture outputs:
 
 ```bash
-just collect-tf bootstrap    # writes AZURE_CLIENT_ID to .env
+just collect-tf bootstrap    # writes AZURE_CLIENT_ID, TF_BACKEND_* to .env
 ```
 
-### 0.8 Set up GitHub repository variables
+Verify in Azure:
+
+```bash
+# Resource group exists
+az group show -n rg-dagster-tfstate --query name -o tsv
+
+# Entra app exists
+az ad app list --display-name app-dagster-github --query '[0].displayName' -o tsv
+
+# Storage account reachable
+az storage blob list --account-name "$(grep TF_BACKEND_STORAGE_ACCOUNT .env | cut -d'"' -f2)" \
+  --container-name tfstate --auth-mode key -o table
+```
+
+### 0.8 Set up GitHub repository variables ✅
 
 These tell GitHub how to authenticate to Azure via [OIDC](concepts/oidc.md).
 
@@ -169,7 +184,10 @@ git commit -m "ci: activate pr-checks workflow"
 
 Push a test PR to verify the workflow passes.
 
-### 0.9 Configure Terraform backends
+Verify: the PR check in the **Actions** tab should show a green checkmark. The log should
+show `azure/login@v2` succeeding (not `AADSTS700213`).
+
+### 0.9 Configure Terraform backends ✅
 
 Point the remaining stacks at the remote [state backend](concepts/terraform-state.md):
 
@@ -179,7 +197,25 @@ just tf-init env-stage    # separate state key (stage.tfstate)
 just tf-init env-prod     # separate state key (prod.tfstate)
 ```
 
-**Done when:** All three `init` commands succeed.
+Each should print `Successfully configured the backend "azurerm"!`
+
+Verify the state files were created in blob storage:
+
+```bash
+az storage blob list \
+  --account-name "$(grep TF_BACKEND_STORAGE_ACCOUNT .env | cut -d'"' -f2)" \
+  --container-name tfstate --auth-mode key -o table
+```
+
+You should see `shared.tfstate`, `stage.tfstate`, and `prod.tfstate`.
+
+**Done when:** All three `init` commands succeed and state files appear in the container.
+
+**Verify the entire phase before proceeding:**
+
+```bash
+just verify 0
+```
 
 ---
 
@@ -212,6 +248,16 @@ Capture outputs:
 just collect-tf shared    # writes ACR_NAME, PG_FQDN, KV_NAME, etc. to .env
 ```
 
+Verify the resources exist:
+
+```bash
+# List all resources in the shared resource group
+az resource list -g rg-dagster-shared -o table
+
+# Check outputs were captured
+just show-env | grep -E 'ACR_NAME|PG_FQDN|KV_NAME|STORAGE_ACCOUNT|AKS_EGRESS'
+```
+
 ### 1.2 Verify connectivity
 
 ```bash
@@ -240,6 +286,12 @@ See [stop/start](concepts/stop-start.md) for gotchas.
 
 **Done when:** `kubectl get nodes` shows Ready and stop/start round-trips.
 
+**Verify the entire phase before proceeding:**
+
+```bash
+just verify 1
+```
+
 ---
 
 ## Phase 2 — Stage environment (Goal 1: Dagster talks to Databricks)
@@ -255,6 +307,16 @@ just collect-tf env-stage
 Creates: [Databricks workspace](resources/databricks-workspace.md) (`dbw-dagster-stage`),
 Access Connector, [managed identity](resources/managed-identity.md) (`id-dagster-stage`),
 Postgres DB `dagster_stage`, K8s namespace `dagster-stage`.
+
+Verify:
+
+```bash
+# Workspace exists
+az databricks workspace show -g rg-dagster-stage -n dbw-dagster-stage --query name -o tsv
+
+# Stage outputs captured
+just show-env | grep DBX_STAGE
+```
 
 ### 2.2 First login to the Databricks workspace
 
@@ -289,6 +351,15 @@ just tf-apply env-stage
 Creates catalog, schemas, SQL warehouse, service principal, secrets in Key Vault, IP access
 list — see [Databricks workspace](resources/databricks-workspace.md) for the full list.
 
+Verify:
+
+```bash
+# Secrets landed in Key Vault
+az keyvault secret list \
+  --vault-name "$(just show-env | grep KV_NAME | cut -d'"' -f2)" \
+  --query '[].name' -o tsv
+```
+
 ### 2.5 Build and push the Dagster image
 
 ```bash
@@ -300,6 +371,14 @@ az acr build \
 
 Builds the Docker image in the cloud via [ACR](resources/acr.md) — no local Docker needed.
 
+Verify the image was pushed:
+
+```bash
+az acr repository show-tags \
+  --name "$(just show-env | grep ACR_NAME | cut -d'"' -f2)" \
+  --repository poc -o tsv
+```
+
 ### 2.6 Deploy Dagster via Helm
 
 ```bash
@@ -308,6 +387,12 @@ just helm-upgrade stage
 
 Deploys Dagster into `dagster-stage`. See [Helm deployments](concepts/helm-deployments.md)
 for what gets created and how values are layered.
+
+Verify pods are running:
+
+```bash
+kubectl get pods -n dagster-stage    # all pods should be Running/Ready
+```
 
 ### 2.7 Smoke test
 
@@ -320,6 +405,12 @@ In the UI: find `databricks_whoami`, click **Materialize**. It should succeed an
 
 **Done when:** `databricks_whoami` materializes.
 **→ Goal 1: Dagster on AKS talks to Databricks.**
+
+**Verify the entire phase before proceeding:**
+
+```bash
+just verify 2
+```
 
 ---
 
@@ -347,6 +438,12 @@ just collect-bundle stage     # capture pipeline ID
 See [Databricks CLI](tools/databricks-cli.md) for bundle structure. The pipeline writes
 raw data to `stage.bronze.<source>` — see [Unity Catalog](concepts/unity-catalog.md).
 
+Verify:
+
+```bash
+just show-env | grep PIPELINE_ID    # should show the captured pipeline ID
+```
+
 ### 3.3–3.5 Build assets and dbt model
 
 ```bash
@@ -372,6 +469,12 @@ just port-forward stage    # materialize bronze, then silver
 lineage from bronze to silver.
 **→ Goal 2: end-to-end data pipeline.**
 
+**Verify the entire phase before proceeding:**
+
+```bash
+just verify 3
+```
+
 ---
 
 ## Phase 4 — Prod (Goal 3: stage/prod parity)
@@ -382,6 +485,13 @@ lineage from bronze to silver.
 just tf-plan env-prod
 just tf-apply env-prod
 just collect-tf env-prod
+```
+
+Verify:
+
+```bash
+az databricks workspace show -g rg-dagster-prod -n dbw-dagster-prod --query name -o tsv
+just show-env | grep DBX_PROD
 ```
 
 ### 4.2 First login to prod workspace
@@ -404,11 +514,23 @@ just tf-apply env-prod
 just bundle-deploy prod
 just collect-bundle prod
 just helm-upgrade prod
-just port-forward prod    # materialize both assets
+```
+
+Verify:
+
+```bash
+kubectl get pods -n dagster-prod    # all pods Running/Ready
+just port-forward prod              # materialize both assets in the UI
 ```
 
 **Done when:** Prod mirrors stage.
 **→ Goal 3: stage/prod parity.**
+
+**Verify the entire phase before proceeding:**
+
+```bash
+just verify 4
+```
 
 ---
 
@@ -437,6 +559,12 @@ for your approval in GitHub → Actions → **Review deployments** → **Approve
 
 **Done when:** A trivial PR flows `main → stage → approval → prod`.
 **→ Goal 4: automated promotion.**
+
+**Verify the entire phase:**
+
+```bash
+just verify 5
+```
 
 ---
 

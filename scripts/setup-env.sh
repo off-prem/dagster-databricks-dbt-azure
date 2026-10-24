@@ -143,6 +143,10 @@ collect_tf() {
     bootstrap)
       val="$(tf_out client_id)"
       [ -n "${val}" ] && env_set AZURE_CLIENT_ID "${val}" && echo "AZURE_CLIENT_ID=${val}"
+      val="$(tf_out storage_account_name)"
+      [ -n "${val}" ] && env_set TF_BACKEND_STORAGE_ACCOUNT "${val}" && echo "TF_BACKEND_STORAGE_ACCOUNT=${val}"
+      val="$(tf_out resource_group_name)"
+      [ -n "${val}" ] && env_set TF_BACKEND_RESOURCE_GROUP "${val}" && echo "TF_BACKEND_RESOURCE_GROUP=${val}"
       ;;
     shared)
       for pair in \

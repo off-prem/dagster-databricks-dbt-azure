@@ -207,6 +207,11 @@ install_jq
 install_just
 
 echo
+echo "Syncing Python project dependencies..."
+(cd "${ROOT}/dagster" && uv sync --quiet)
+echo "  dagster/ virtualenv ready (includes dbt)"
+
+echo
 echo "Done. Ensure ${BIN} is on your PATH (e.g. add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to ~/.bashrc)."
 echo
 echo "Run 'just --list' in the repo to see available commands."

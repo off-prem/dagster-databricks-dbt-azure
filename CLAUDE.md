@@ -50,12 +50,13 @@ dbt build --target stage                   # from dbt/ (reads env vars via profi
 dg check defs                              # from dagster/
 scripts/port-forward.sh stage              # Dagster UI at http://localhost:3000
 scripts/stop.sh / scripts/start.sh         # cost control
+scripts/verify.sh 0                        # verify phase 0 is complete (0-5)
 ```
 
 ## Current state
 <!-- Update after every phase. A fresh session reads this first. -->
-- Phase: 0 (in progress)
-- Steps with ✅ in `docs/guide.md`: 0.1–0.7
-- Next step: 0.8 (set up GitHub repository variables)
+- Phase: 0 (complete)
+- Steps with ✅ in `docs/guide.md`: 0.1–0.9
+- Next step: 1.1 (apply shared infrastructure — costs begin)
 - Known blockers: none
 - Values collected so far: none committed; per-user values are in the git-ignored `.env` (run `scripts/setup-env.sh`)
