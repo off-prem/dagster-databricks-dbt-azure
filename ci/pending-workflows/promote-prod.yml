@@ -23,4 +23,4 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       # TODO (Phase 5.3): same SHA → helm upgrade dagster-prod → bundle deploy -t prod → scripts/smoke-test.sh prod
-      - run: echo "promote-prod skeleton — see docs/05-cicd.md"
+      - run: echo "promote-prod skeleton — see docs/concepts/cicd.md"

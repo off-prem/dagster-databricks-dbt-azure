@@ -107,7 +107,7 @@ detect() {
 
   echo "Wrote ${ENV_FILE}: subscription ${sub}, ip ${ip}, repo ${repo}, owner ${owner}"
   echo "Load it with: source scripts/load-env.sh"
-  echo "Future-phase keys are scaffolded as blank; fill them as you progress through the runbook."
+  echo "Future-phase keys are scaffolded as blank; fill them as you progress through the guide."
 }
 
 collect_tf() {
