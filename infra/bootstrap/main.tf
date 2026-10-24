@@ -69,7 +69,7 @@ resource "azuread_application_federated_identity_credential" "main" {
   display_name   = "github-main"
   audiences      = ["api://AzureADTokenExchange"]
   issuer         = "https://token.actions.githubusercontent.com"
-  subject        = "repo:${var.github_repo}:ref:refs/heads/main"
+  subject        = "${var.github_oidc_prefix}:ref:refs/heads/main"
 }
 
 resource "azuread_application_federated_identity_credential" "stage" {
@@ -77,7 +77,7 @@ resource "azuread_application_federated_identity_credential" "stage" {
   display_name   = "github-env-stage"
   audiences      = ["api://AzureADTokenExchange"]
   issuer         = "https://token.actions.githubusercontent.com"
-  subject        = "repo:${var.github_repo}:environment:stage"
+  subject        = "${var.github_oidc_prefix}:environment:stage"
 }
 
 resource "azuread_application_federated_identity_credential" "prod" {
@@ -85,7 +85,15 @@ resource "azuread_application_federated_identity_credential" "prod" {
   display_name   = "github-env-prod"
   audiences      = ["api://AzureADTokenExchange"]
   issuer         = "https://token.actions.githubusercontent.com"
-  subject        = "repo:${var.github_repo}:environment:prod"
+  subject        = "${var.github_oidc_prefix}:environment:prod"
+}
+
+resource "azuread_application_federated_identity_credential" "pull_request" {
+  application_id = azuread_application.github.id
+  display_name   = "github-pull-request"
+  audiences      = ["api://AzureADTokenExchange"]
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "${var.github_oidc_prefix}:pull_request"
 }
 
 resource "azurerm_role_assignment" "contributor" {

@@ -95,10 +95,24 @@ detect() {
   owner="${OWNER:-$(git -C "${ROOT}" config user.name || true)}"
   owner="${owner:-${USER:-unknown}}"
 
+  # OIDC subject prefix — GitHub's immutable format includes org/repo IDs for security.
+  # Federated credentials must match this prefix exactly.
+  local oidc_prefix=""
+  if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
+    oidc_prefix="$(gh api "repos/${repo}/actions/oidc/customization/sub" --jq '.sub_claim_prefix // empty' 2>/dev/null || true)"
+  fi
+  if [ -z "${oidc_prefix}" ]; then
+    oidc_prefix="repo:${repo}"
+    echo "Warning: could not detect OIDC prefix via gh; using default 'repo:<org>/<repo>'."
+    echo "If GitHub has immutable subjects enabled, federated credentials may not match."
+    echo "Run 'gh auth login' and re-run this script to detect the correct prefix."
+  fi
+
   env_set TF_VAR_subscription_id "${sub}"
   env_set TF_VAR_tenant_id "${tenant}"
   env_set TF_VAR_my_ip_cidr "${ip}"
   env_set TF_VAR_github_repo "${repo}"
+  env_set TF_VAR_github_oidc_prefix "${oidc_prefix}"
   env_set TF_VAR_owner "${owner}"
   env_set ARM_SUBSCRIPTION_ID "${sub}"
   env_set ARM_TENANT_ID "${tenant}"

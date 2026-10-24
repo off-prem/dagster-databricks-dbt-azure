@@ -11,7 +11,12 @@ variable "location" {
 
 variable "github_repo" {
   type        = string
-  description = "GitHub org/repo for OIDC federated credentials"
+  description = "GitHub org/repo (e.g. off-prem/dagster-databricks-dbt-azure)"
+}
+
+variable "github_oidc_prefix" {
+  type        = string
+  description = "OIDC subject prefix from GitHub (includes org/repo IDs when immutable subjects are enabled)"
 }
 
 variable "owner" {

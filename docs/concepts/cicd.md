@@ -20,7 +20,7 @@ is a different binary in prod."
 
 Workflows authenticate to Azure via [OIDC](oidc.md) — no stored secrets. The
 [Entra app](../resources/entra-app.md) `app-dagster-github` has federated credentials
-for `main`, `environment:stage`, and `environment:prod`. The workflow calls `azure/login@v2`
+for `main`, `environment:stage`, `environment:prod`, and `pull_request`. The workflow calls `azure/login@v2`
 with `client-id`, `tenant-id`, `subscription-id` from GitHub repository **variables** (not
 secrets — these are non-sensitive IDs).
 

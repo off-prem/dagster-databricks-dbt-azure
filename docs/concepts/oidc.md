@@ -32,14 +32,18 @@ With OIDC, there's no shared secret at all:
 
 ## Federated credentials in this project
 
-The [Entra app](../resources/entra-app.md) `app-dagster-github` has three federated
+The [Entra app](../resources/entra-app.md) `app-dagster-github` has four federated
 credentials:
 
 | Credential | Matches | Used by |
 |-----------|---------|---------|
-| `github-main` | `repo:<org>/<repo>:ref:refs/heads/main` | Workflows triggered by pushes to `main` |
-| `github-env-stage` | `repo:<org>/<repo>:environment:stage` | Workflows targeting the `stage` environment |
-| `github-env-prod` | `repo:<org>/<repo>:environment:prod` | Workflows targeting the `prod` environment |
+| `github-main` | `<oidc-prefix>:ref:refs/heads/main` | Workflows triggered by pushes to `main` |
+| `github-env-stage` | `<oidc-prefix>:environment:stage` | Workflows targeting the `stage` environment |
+| `github-env-prod` | `<oidc-prefix>:environment:prod` | Workflows targeting the `prod` environment |
+| `github-pull-request` | `<oidc-prefix>:pull_request` | Workflows triggered by pull requests |
+
+The `<oidc-prefix>` includes your org and repo IDs (GitHub's immutable subject format).
+`setup-env.sh` auto-detects it via the GitHub API and stores it as `TF_VAR_github_oidc_prefix`.
 
 This means only these specific contexts can authenticate — a workflow from a fork or a
 different branch can't.

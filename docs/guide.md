@@ -132,7 +132,7 @@ See [Terraform](tools/terraform.md) for what init/plan/apply do.
 | Resource group | `rg-dagster-tfstate` | Free |
 | Storage account + container | `stdagstertf<random>/tfstate` | ~$0.01/month |
 | [Entra app](resources/entra-app.md) | `app-dagster-github` | Free |
-| 3 federated credentials | `main`, `environment:stage`, `environment:prod` | Free |
+| 4 federated credentials | `main`, `environment:stage`, `environment:prod`, `pull_request` | Free |
 | 2 role assignments | Contributor + User Access Administrator | Free |
 
 Capture outputs:

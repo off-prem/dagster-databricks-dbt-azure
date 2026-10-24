@@ -16,7 +16,7 @@ Azure trusts it because we've pre-registered the trust relationship.
 | Setting | What it is |
 |---------|-----------|
 | Display name | `app-dagster-github` |
-| Federated credentials (×3) | Trust rules for `repo:<org>/<repo>:ref:refs/heads/main`, `...:environment:stage`, `...:environment:prod`. Only these specific GitHub contexts can authenticate. |
+| Federated credentials (×4) | Trust rules for `:ref:refs/heads/main`, `:environment:stage`, `:environment:prod`, `:pull_request`. Only these specific GitHub contexts can authenticate. Subjects use the OIDC prefix (includes org/repo IDs when immutable subjects are enabled). |
 | Contributor role | Can create, update, and delete Azure resources in the subscription |
 | User Access Administrator role | Can assign roles to other identities (needed to grant AKS, managed identities, etc. their permissions) |
 
