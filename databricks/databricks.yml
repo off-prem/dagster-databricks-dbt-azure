@@ -3,7 +3,7 @@
 # Set it before running: DATABRICKS_HOST=$DBX_STAGE_HOST databricks bundle deploy -t stage
 # Or use: scripts/bundle-deploy.sh stage
 bundle:
-  name: dagsterpoc
+  name: dagster
 
 variables:
   catalog:

@@ -1,4 +1,4 @@
-# 01 — Architecture
+# Architecture
 
 ## One paragraph
 Dagster OSS runs on a single AKS cluster (Free control plane, one burstable node) with two
@@ -8,7 +8,7 @@ service principal whose OAuth secret is mounted from Azure Key Vault. Dagster ru
 Azure Database for PostgreSQL Flexible Server with two databases. Databricks compute is serverless
 only (an SDP pipeline and a 2X-Small SQL warehouse), so Databricks costs nothing when idle.
 Nothing is exposed via public ingress; all control planes are public-but-Entra-gated and
-IP-restricted. Private endpoints and VPN are deliberately deferred (see `08-corporate-migration.md`).
+IP-restricted. Private endpoints and VPN are deliberately deferred (see [corporate migration](corporate-migration.md)).
 
 ## Component diagram
 

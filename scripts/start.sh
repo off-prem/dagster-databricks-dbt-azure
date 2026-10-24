@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Reverse of stop.sh: bring AKS and Postgres back, wait for both to be ready
-# (docs/06-stop-start.md: "waits for nodes Ready and Postgres Ready").
+# (docs/concepts/stop-start.md: "waits for nodes Ready and Postgres Ready").
 set -euo pipefail
 
-RG_SHARED="rg-dagsterpoc-shared"
-AKS_NAME="aks-dagsterpoc"
-PG_NAME="pg-dagsterpoc"
+RG_SHARED="rg-dagster-shared"
+AKS_NAME="aks-dagster"
+PG_NAME="pg-dagster"
 
 echo "Starting Postgres Flexible Server ${PG_NAME} in ${RG_SHARED}..."
 az postgres flexible-server start --resource-group "${RG_SHARED}" --name "${PG_NAME}"

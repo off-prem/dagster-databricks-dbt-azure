@@ -1,26 +1,26 @@
-# 04 — Conventions
+# Conventions
 
 ## Naming
-Pattern: `<type>-dagsterpoc-<env|shared>[-suffix]`. Lowercase, hyphens, except where Azure forbids.
+Pattern: `<type>-dagster-<env|shared>[-suffix]`. Lowercase, hyphens, except where Azure forbids.
 
 | Resource | Name |
 |---|---|
-| Resource groups | `rg-dagsterpoc-shared`, `rg-dagsterpoc-stage`, `rg-dagsterpoc-prod`, `rg-dagsterpoc-tfstate` |
-| VNet / subnets | `vnet-dagsterpoc` / `snet-aks`, `snet-pe`, `snet-dbx-host`, `snet-dbx-container` |
-| AKS | `aks-dagsterpoc` (node RG auto `MC_...`; leave default) |
-| ACR | `acrdagsterpoc<4 random>` (alphanumeric only, globally unique) |
-| Key Vault | `kv-dagsterpoc-<4 random>` |
-| Postgres | `pg-dagsterpoc` ; DBs `dagster_stage`, `dagster_prod`; roles `dagster_stage`, `dagster_prod` |
-| Storage (ADLS) | `stdagsterpoc<4 random>` ; containers `metastore`, `bronze`, `silver` |
-| Databricks workspace | `dbw-dagsterpoc-<env>` |
-| Access Connector | `dbac-dagsterpoc-<env>` |
-| Managed identities | `id-dagster-<env>` (pods), `id-dagsterpoc-github` not needed (Entra app instead) |
-| Entra app | `app-dagsterpoc-github` |
+| Resource groups | `rg-dagster-shared`, `rg-dagster-stage`, `rg-dagster-prod`, `rg-dagster-tfstate` |
+| VNet / subnets | `vnet-dagster` / `snet-aks`, `snet-pe`, `snet-dbx-host`, `snet-dbx-container` |
+| AKS | `aks-dagster` (node RG auto `MC_...`; leave default) |
+| ACR | `acrdagster<4 random>` (alphanumeric only, globally unique) |
+| Key Vault | `kv-dagster-<4 random>` |
+| Postgres | `pg-dagster` ; DBs `dagster_stage`, `dagster_prod`; roles `dagster_stage`, `dagster_prod` |
+| Storage (ADLS) | `stdagster<4 random>` ; containers `metastore`, `bronze`, `silver` |
+| Databricks workspace | `dbw-dagster-<env>` |
+| Access Connector | `dbac-dagster-<env>` |
+| Managed identities | `id-dagster-<env>` (pods), `id-dagster-github` not needed (Entra app instead) |
+| Entra app | `app-dagster-github` |
 | Databricks SP | `sp-dagster-<env>` |
 | K8s namespaces | `dagster-<env>` ; Helm releases `dagster-<env>` |
 | Key Vault secrets | `pg-admin-password`, `pg-dagster-<env>-password`, `dbx-<env>-sp-client-id`, `dbx-<env>-sp-secret`, `source-api-key` |
 
-Tags on everything: `project=dagsterpoc`, `env=<env|shared>`, `owner=<you>`, `managed_by=terraform`.
+Tags on everything: `project=dagster`, `env=<env|shared>`, `owner=<you>`, `managed_by=terraform`.
 
 ## Region
 `eastus2` everywhere. Serverless SQL and SDP must be available in the region; verify in Phase 2.

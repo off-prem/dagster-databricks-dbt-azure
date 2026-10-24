@@ -1,13 +1,13 @@
-# 02 — Services and costs (lean POC)
+# Services and costs (lean POC)
 
 Budget target: **$50–100/month** with the cluster and Postgres stopped when not in use.
-This list is the build spec. Anything not here is out of scope unless `07-decisions.md` is updated first.
+This list is the build spec. Anything not here is out of scope unless [decisions.md](decisions.md) is updated first.
 
 ## Azure
 
 | Service | SKU / config | Purpose | Est. $/mo |
 |---|---|---|---|
-| Resource groups | `rg-dagsterpoc-shared`, `rg-dagsterpoc-stage`, `rg-dagsterpoc-prod` | Lifecycle boundaries that map to future subscriptions | 0 |
+| Resource groups | `rg-dagster-shared`, `rg-dagster-stage`, `rg-dagster-prod` | Lifecycle boundaries that map to future subscriptions | 0 |
 | AKS control plane | Free tier, Entra RBAC, authorized IP ranges, OIDC issuer + workload identity enabled, Secrets Store CSI addon | Hosts Dagster | 0 |
 | AKS node pool | 1× Standard_B2ms (2 vCPU/8 GB), `--node-osdisk-size 32`, no autoscaler | Only compute Dagster needs | ~60 running, ~25–30 with stop/start |
 | Node OS disk | 32 GB Premium SSD (P4) | Default 128 GB is ~$20; shrink it | ~5 |
@@ -16,7 +16,7 @@ This list is the build spec. Anything not here is out of scope unless `07-decisi
 | Azure Container Registry | Basic, admin user disabled | Dagster code image | ~5 |
 | Key Vault | Standard, RBAC mode, firewall | Databricks SP secrets, Postgres password, source API key | <1 |
 | User-assigned managed identity | one per env (`id-dagster-<env>`) + federated credential to the Dagster service account | Pods → Key Vault | 0 |
-| Entra app registration | `app-dagsterpoc-github` + federated credentials for `main`, `environment:stage`, `environment:prod` | GitHub OIDC | 0 |
+| Entra app registration | `app-dagster-github` + federated credentials for `main`, `environment:stage`, `environment:prod`, `pull_request` | GitHub OIDC | 0 |
 | VNet + subnets + NSG | `10.10.0.0/16`; `snet-aks`; reserve `snet-pe`, `snet-dbx-host/container` (unused for now) | Layout identical to corporate version | 0 |
 | Storage account (ADLS Gen2) | StorageV2, LRS, HNS on, key auth disabled, firewall | UC metastore root + external location `bronze`/`silver` | ~2 |
 | Azure Databricks workspace ×2 | Premium, managed VNet (no injection), SCC on | Stage and prod workspaces | 0 fixed |

@@ -3,5 +3,5 @@
 # metastore_id) are not set here: scripts/setup-env.sh writes them to the git-ignored .env as TF_VAR_*.
 env             = "prod"
 location        = "eastus2"
-shared_rg       = "rg-dagsterpoc-shared"
-aks_name        = "aks-dagsterpoc"
+shared_rg       = "rg-dagster-shared"
+aks_name        = "aks-dagster"
