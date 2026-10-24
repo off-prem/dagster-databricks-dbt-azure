@@ -3,9 +3,13 @@
 # (docs/concepts/stop-start.md: "waits for nodes Ready and Postgres Ready").
 set -euo pipefail
 
-RG_SHARED="rg-dagster-shared"
-AKS_NAME="aks-dagster"
-PG_NAME="pg-dagster"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT}/scripts/load-env.sh"
+
+PROJECT="${TF_VAR_project:-dagster}"
+RG_SHARED="rg-${PROJECT}-shared"
+AKS_NAME="aks-${PROJECT}"
+PG_NAME="pg-${PROJECT}"
 
 echo "Starting Postgres Flexible Server ${PG_NAME} in ${RG_SHARED}..."
 az postgres flexible-server start --resource-group "${RG_SHARED}" --name "${PG_NAME}"

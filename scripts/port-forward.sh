@@ -9,8 +9,12 @@ case "${ENV}" in
   *) echo "env must be 'stage' or 'prod'" >&2; exit 1 ;;
 esac
 
-NAMESPACE="dagster-${ENV}"
-RELEASE="dagster-${ENV}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT}/scripts/load-env.sh"
+
+PROJECT="${TF_VAR_project:-dagster}"
+NAMESPACE="${PROJECT}-${ENV}"
+RELEASE="${PROJECT}-${ENV}"
 # TODO(Phase 2.6/2.7): confirm this against the actual dagster/dagster Helm chart service
 # once it's installed — `kubectl get svc -n ${NAMESPACE}` — the chart's webserver Service
 # name follows "<release>-dagster-webserver" as of current chart versions, but pin it here
