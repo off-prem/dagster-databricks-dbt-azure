@@ -69,7 +69,6 @@ scaffold_future_keys() {
   env_scaffold DBX_STAGE_WORKSPACE_ID ""
   env_scaffold DBX_STAGE_SP_CLIENT_ID ""
   env_scaffold DBX_STAGE_WAREHOUSE_HTTP_PATH ""
-  env_scaffold DBX_STAGE_PIPELINE_ID ""
   env_scaffold DAGSTER_STAGE_IDENTITY_CLIENT_ID ""
 
   # Phase 4 — prod
@@ -78,7 +77,6 @@ scaffold_future_keys() {
   env_scaffold DBX_PROD_WORKSPACE_ID ""
   env_scaffold DBX_PROD_SP_CLIENT_ID ""
   env_scaffold DBX_PROD_WAREHOUSE_HTTP_PATH ""
-  env_scaffold DBX_PROD_PIPELINE_ID ""
   env_scaffold DAGSTER_PROD_IDENTITY_CLIENT_ID ""
 }
 
@@ -107,6 +105,13 @@ detect() {
     echo "If GitHub has immutable subjects enabled, federated credentials may not match."
     echo "Run 'gh auth login' and re-run this script to detect the correct prefix."
   fi
+
+  # Project settings — set defaults, don't overwrite if user already changed them
+  local existing_val
+  existing_val="$(grep "^TF_VAR_project=" "${ENV_FILE}" 2>/dev/null | head -1 | sed 's/^[^=]*=//; s/"//g')"
+  [ -n "${existing_val}" ] || env_set TF_VAR_project "dagster"
+  existing_val="$(grep "^TF_VAR_location=" "${ENV_FILE}" 2>/dev/null | head -1 | sed 's/^[^=]*=//; s/"//g')"
+  [ -n "${existing_val}" ] || env_set TF_VAR_location "eastus2"
 
   env_set TF_VAR_subscription_id "${sub}"
   env_set TF_VAR_tenant_id "${tenant}"
@@ -198,27 +203,12 @@ collect_bundle() {
     stage|prod) ;;
     *) die "env must be 'stage' or 'prod'" ;;
   esac
-  command -v databricks >/dev/null || die "databricks CLI not found."
-  local pipeline_id
-  pipeline_id="$(databricks pipelines list-pipelines --output json 2>/dev/null \
-    | python3 -c "
-import json, sys
-for p in json.load(sys.stdin).get('statuses', []):
-    if 'bronze' in p.get('name', '').lower():
-        print(p['pipeline_id']); break
-" 2>/dev/null || true)"
-  if [ -z "${pipeline_id}" ]; then
-    echo "No bronze pipeline found. Deploy the bundle first, then re-run." >&2
-    return 1
-  fi
-  local key
-  case "${env}" in
-    stage) key="DBX_STAGE_PIPELINE_ID" ;;
-    prod)  key="DBX_PROD_PIPELINE_ID" ;;
-  esac
-  env_set "${key}" "${pipeline_id}"
-  echo "${key}=${pipeline_id}"
-  echo "Updated ${ENV_FILE}."
+  local project
+  project="$(grep "^TF_VAR_project=" "${ENV_FILE}" 2>/dev/null | head -1 | sed 's/^[^=]*=//; s/"//g')"
+  project="${project:-dagster}"
+  local bundle_root="/Workspace/.bundle/${project}/${env}/files"
+  echo "Bundle root for ${env}: ${bundle_root}"
+  echo "(helm-upgrade.sh computes this automatically — no .env key needed)"
 }
 
 case "${1:-}" in

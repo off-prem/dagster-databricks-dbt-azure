@@ -26,7 +26,7 @@ provider "azuread" {}
 # ── Terraform state storage ─────────────────────────────────────────────────
 
 resource "azurerm_resource_group" "tfstate" {
-  name     = "rg-dagster-tfstate"
+  name     = "rg-${var.project}-tfstate"
   location = var.location
   tags     = local.tags
 }
@@ -38,7 +38,7 @@ resource "random_string" "suffix" {
 }
 
 resource "azurerm_storage_account" "tfstate" {
-  name                     = "stdagstertf${random_string.suffix.result}"
+  name                     = "st${var.project}tf${random_string.suffix.result}"
   resource_group_name      = azurerm_resource_group.tfstate.name
   location                 = azurerm_resource_group.tfstate.location
   account_tier             = "Standard"
@@ -57,7 +57,7 @@ resource "azurerm_storage_container" "tfstate" {
 data "azurerm_subscription" "current" {}
 
 resource "azuread_application" "github" {
-  display_name = "app-dagster-github"
+  display_name = "app-${var.project}-github"
 }
 
 resource "azuread_service_principal" "github" {

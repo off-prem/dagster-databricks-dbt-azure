@@ -1,0 +1,17 @@
+# API sources for bronze ingestion. Add a new entry to ingest a new API.
+# Both the Dagster asset factory and the Databricks entrypoint read this file.
+#
+# Required fields: name, url
+# Optional fields: headers (dict), params (dict), auth (see below)
+#
+# Auth: secrets live in Key Vault, mounted as env vars on the Dagster pod.
+# Dagster passes them to Databricks via Pipes extras — the secret never touches code.
+#   auth:
+#     header: X-Api-Key              # request header name
+#     secret_env: SOURCE_POSTS_KEY   # env var on the Dagster pod (from Key Vault)
+sources:
+  - name: posts
+    url: https://jsonplaceholder.typicode.com/posts
+    auth:
+      header: X-Api-Key
+      secret_env: SOURCE_POSTS_API_KEY

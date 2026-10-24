@@ -16,18 +16,17 @@ esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${ROOT}/scripts/load-env.sh"
 
-NAMESPACE="dagster-${ENV}"
-RELEASE="dagster-${ENV}"
+PROJECT="${TF_VAR_project:-dagster}"
+NAMESPACE="${PROJECT}-${ENV}"
+RELEASE="${PROJECT}-${ENV}"
 
 # Map env-specific .env keys
 if [ "${ENV}" = stage ]; then
   DBX_HOST="${DBX_STAGE_HOST:-}"
-  DBX_PIPELINE_ID="${DBX_STAGE_PIPELINE_ID:-}"
   DBX_WAREHOUSE="${DBX_STAGE_WAREHOUSE_HTTP_PATH:-}"
   IDENTITY_CLIENT_ID="${DAGSTER_STAGE_IDENTITY_CLIENT_ID:-}"
 else
   DBX_HOST="${DBX_PROD_HOST:-}"
-  DBX_PIPELINE_ID="${DBX_PROD_PIPELINE_ID:-}"
   DBX_WAREHOUSE="${DBX_PROD_WAREHOUSE_HTTP_PATH:-}"
   IDENTITY_CLIENT_ID="${DAGSTER_PROD_IDENTITY_CLIENT_ID:-}"
 fi
@@ -47,8 +46,8 @@ helm upgrade --install "${RELEASE}" dagster/dagster \
   --set "dagster-user-deployments.deployments[0].image.repository=${ACR_LOGIN_SERVER:-}/poc" \
   --set "dagster-user-deployments.deployments[0].env[2].name=DATABRICKS_HOST" \
   --set "dagster-user-deployments.deployments[0].env[2].value=${DBX_HOST}" \
-  --set "dagster-user-deployments.deployments[0].env[3].name=DBX_BRONZE_PIPELINE_ID" \
-  --set "dagster-user-deployments.deployments[0].env[3].value=${DBX_PIPELINE_ID}" \
+  --set "dagster-user-deployments.deployments[0].env[3].name=DBX_BUNDLE_ROOT" \
+  --set "dagster-user-deployments.deployments[0].env[3].value=/Workspace/.bundle/${PROJECT}/${ENV}/files" \
   --set "dagster-user-deployments.deployments[0].env[4].name=DBX_WAREHOUSE_HTTP_PATH" \
   --set "dagster-user-deployments.deployments[0].env[4].value=${DBX_WAREHOUSE}" \
   "$@"

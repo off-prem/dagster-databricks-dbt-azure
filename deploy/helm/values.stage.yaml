@@ -16,8 +16,8 @@ dagster-user-deployments:
           value: stage
         - name: DATABRICKS_HOST
           value: ""         # overridden: ${DBX_STAGE_HOST}
-        - name: DBX_BRONZE_PIPELINE_ID
-          value: ""         # overridden: ${DBX_STAGE_PIPELINE_ID}
+        - name: DBX_BUNDLE_ROOT
+          value: ""         # overridden: /Workspace/.bundle/dagster/stage/files
         - name: DBX_WAREHOUSE_HTTP_PATH
           value: ""         # overridden: ${DBX_STAGE_WAREHOUSE_HTTP_PATH}
       envSecrets:

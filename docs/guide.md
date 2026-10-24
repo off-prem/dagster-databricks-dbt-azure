@@ -10,6 +10,10 @@ the links when you want to understand something deeper.
 **Cost:** ~$50–100/month while running; ~$35–40/month stopped. Phase 0 is free. Costs start
 in Phase 1. Run `just stop` when idle (see [stop/start](concepts/stop-start.md)).
 
+**Naming:** Resource names use the `TF_VAR_project` prefix (default `dagster`). Examples
+below show the default — if you changed it in step 0.5, substitute your project name
+(e.g. `rg-myproject-shared` instead of `rg-dagster-shared`).
+
 **Reference docs:**
 [Architecture](architecture.md) ·
 [Costs](costs.md) ·
@@ -85,6 +89,22 @@ just setup-env
 Detects your subscription, tenant, public IP, GitHub repo, and name. Writes them to a
 git-ignored `.env` and scaffolds blank keys for future phases. See [just](tools/just.md)
 for how `.env` auto-loading works.
+
+**Review project settings** — two values have defaults you may want to change **before
+any `terraform apply`** (changing them later means recreating resources):
+
+| Variable | Default | What it controls |
+|----------|---------|-----------------|
+| `TF_VAR_project` | `dagster` | Resource name prefix: `rg-{project}-shared`, `aks-{project}`, `dbw-{project}-stage`, etc. |
+| `TF_VAR_location` | `eastus2` | Azure region for all resources |
+
+Edit `.env` directly if you want different values:
+
+```bash
+# Example: rename everything from dagster → myproject, deploy to West US 2
+sed -i 's/TF_VAR_project="dagster"/TF_VAR_project="myproject"/' .env
+sed -i 's/TF_VAR_location="eastus2"/TF_VAR_location="westus2"/' .env
+```
 
 Verify: `just show-env` — you should see filled-in `TF_VAR_*` values plus blank placeholders.
 
@@ -211,11 +231,19 @@ You should see `shared.tfstate`, `stage.tfstate`, and `prod.tfstate`.
 
 **Done when:** All three `init` commands succeed and state files appear in the container.
 
-**Verify the entire phase before proceeding:**
+### 0.10 Validate code projects
 
 ```bash
 just verify 0
 ```
+
+The verify script now includes code project checks — it runs `dbt parse` and
+`dagster definitions validate` with dummy env vars (no infrastructure needed). Both
+must pass before moving on.
+
+**Preview the asset graph** — `dagster dev` requires a reachable Databricks host (the dbt
+adapter validates credentials at startup), so it won't work with dummy values. You'll see
+the full lineage graph in Phase 2 after `just port-forward stage`.
 
 ---
 
@@ -360,7 +388,44 @@ az keyvault secret list \
   --query '[].name' -o tsv
 ```
 
-### 2.5 Build and push the Dagster image
+### 2.5 Store dummy API key in Key Vault
+
+The `posts` source in `databricks/sources.yml` points to a public API that doesn't need
+a key, but we store a dummy value anyway to test the full Key Vault → pod env → Pipes
+extras → Databricks auth chain. If the chain breaks, you'll know before adding a real
+keyed API later.
+
+```bash
+az keyvault secret set \
+  --vault-name "$(just show-env | grep KV_NAME | cut -d= -f2 | tr -d '"')" \
+  --name source-posts-api-key \
+  --value 'dummy-test-key'
+```
+
+The SecretProviderClass mounts this as `SOURCE_POSTS_API_KEY` on the Dagster pod.
+The extract asset reads it from the pod env and forwards it to Databricks via Pipes extras.
+The entrypoint adds it as an `X-Api-Key` header — jsonplaceholder ignores the header, so
+the extract still succeeds.
+
+### 2.6 Deploy the Databricks bundle
+
+```bash
+just bundle-validate stage    # check config
+just bundle-deploy stage      # deploy extract code to workspace
+```
+
+This deploys `databricks/src/` to `/Workspace/.bundle/dagster/stage/files/`. No DLT
+pipeline is created — the bundle just uploads the Python code that Dagster will submit
+as serverless jobs via Pipes.
+
+Verify the files are in the workspace:
+
+```bash
+databricks workspace ls /Workspace/.bundle/dagster/stage/files/src/extract \
+  --profile stage
+```
+
+### 2.7 Build and push the Dagster image
 
 ```bash
 az acr build \
@@ -379,14 +444,15 @@ az acr repository show-tags \
   --repository poc -o tsv
 ```
 
-### 2.6 Deploy Dagster via Helm
+### 2.8 Deploy Dagster via Helm
 
 ```bash
 just helm-upgrade stage
 ```
 
-Deploys Dagster into `dagster-stage`. See [Helm deployments](concepts/helm-deployments.md)
-for what gets created and how values are layered.
+Deploys Dagster into `dagster-stage`. The Helm values inject `DBX_BUNDLE_ROOT`
+(computed from project name + env) and `DATABRICKS_HOST` into the pod. See
+[Helm deployments](concepts/helm-deployments.md) for how values are layered.
 
 Verify pods are running:
 
@@ -394,16 +460,27 @@ Verify pods are running:
 kubectl get pods -n dagster-stage    # all pods should be Running/Ready
 ```
 
-### 2.7 Smoke test
+### 2.9 Smoke test
 
 ```bash
 just port-forward stage    # Dagster UI at http://localhost:3000
 ```
 
-In the UI: find `databricks_whoami`, click **Materialize**. It should succeed and show
-`sp-dagster-stage` in its metadata.
+In the UI: find `raw_posts` in the asset graph, click **Materialize**. Dagster submits a
+serverless job to Databricks via Pipes — the entrypoint fetches the JSONPlaceholder API
+and writes NDJSON to the landing volume.
 
-**Done when:** `databricks_whoami` materializes.
+**What to check:**
+
+- **Dagster UI:** `raw_posts` materializes successfully, metadata shows `num_records` and
+  `volume_path`.
+- **Databricks workspace:** In Catalog → Volumes → `stage.bronze.landing`, a `posts/`
+  directory exists containing a `.json` file.
+- **Auth chain:** The X-Api-Key header was sent (jsonplaceholder ignores it, but the
+  code path is exercised). If the secret wasn't mounted, you'll see a blank header value
+  in the Pipes extras — check the Dagster run logs.
+
+**Done when:** `raw_posts` materializes and data appears in the landing volume.
 **→ Goal 1: Dagster on AKS talks to Databricks.**
 
 **Verify the entire phase before proceeding:**
@@ -414,59 +491,45 @@ just verify 2
 
 ---
 
-## Phase 3 — The two assets (Goal 2: end-to-end pipeline)
+## Phase 3 — dbt and end-to-end lineage (Goal 2: end-to-end pipeline)
 
-### 3.1 Pick a source API
-
-Choose a public JSON API (free, ideally keyless). If keyed, store in
-[Key Vault](resources/key-vault.md):
+### 3.1 Verify dbt connection
 
 ```bash
-az keyvault secret set \
-  --vault-name "$(just show-env | grep KV_NAME | cut -d= -f2 | tr -d '"')" \
-  --name source-api-key --value '<key>'
+just dbt stage debug       # verify credentials and warehouse connection
 ```
 
-### 3.2 Deploy the Databricks bundle
+### 3.2 Build the silver model
 
 ```bash
-just bundle-validate stage    # check config
-just bundle-deploy stage      # deploy pipeline
-just collect-bundle stage     # capture pipeline ID
+just dbt stage build       # builds bronze streaming table + silver view
 ```
 
-See [Databricks CLI](tools/databricks-cli.md) for bundle structure. The pipeline writes
-raw data to `stage.bronze.<source>` — see [Unity Catalog](concepts/unity-catalog.md).
+This runs two dbt models:
 
-Verify:
+- **`bronze/posts`** — `CREATE OR REFRESH STREAMING TABLE` using `STREAM read_files()`.
+  Auto Loader picks up the NDJSON files that `raw_posts` wrote to the landing volume.
+- **`silver/silver_source`** — selects from the bronze streaming table with any transforms.
+
+Verify the data landed:
 
 ```bash
-just show-env | grep PIPELINE_ID    # should show the captured pipeline ID
+# From the Databricks SQL editor or CLI:
+# SELECT count(*) FROM stage.silver.silver_source
+# Should return > 0 rows
 ```
 
-### 3.3–3.5 Build assets and dbt model
+### 3.3 End-to-end lineage
 
 ```bash
-just dbt stage debug       # verify connection
-just dbt stage build       # run the model
-just check-defs            # validate Dagster definitions
-just test                  # run tests
+just port-forward stage    # Dagster UI at http://localhost:3000
 ```
 
-See [dbt](tools/dbt.md) for project structure and how it integrates with Dagster.
+In the UI: select both `raw_posts` and the dbt assets, click **Materialize all**. Dagster
+shows the full lineage graph: `raw_posts` → `posts` (bronze) → `silver_source`.
 
-### 3.6 Rebuild and redeploy
-
-```bash
-az acr build \
-  --registry "$(just show-env | grep ACR_NAME | cut -d= -f2 | tr -d '"')" \
-  --image poc:latest dagster/
-just helm-upgrade stage
-just port-forward stage    # materialize bronze, then silver
-```
-
-**Done when:** `select count(*) from stage.silver.silver_<model>` > 0 and Dagster shows
-lineage from bronze to silver.
+**Done when:** `SELECT count(*) FROM stage.silver.silver_source` > 0 and Dagster shows
+the full lineage from raw to silver.
 **→ Goal 2: end-to-end data pipeline.**
 
 **Verify the entire phase before proceeding:**
@@ -511,16 +574,15 @@ just tf-apply env-prod
 **Promote, don't rebuild** — prod gets the exact image that passed on stage.
 
 ```bash
-just bundle-deploy prod
-just collect-bundle prod
-just helm-upgrade prod
+just bundle-deploy prod     # deploy extract code to prod workspace
+just helm-upgrade prod      # deploy Dagster with prod env vars
 ```
 
 Verify:
 
 ```bash
 kubectl get pods -n dagster-prod    # all pods Running/Ready
-just port-forward prod              # materialize both assets in the UI
+just port-forward prod              # materialize raw_posts, then dbt assets
 ```
 
 **Done when:** Prod mirrors stage.

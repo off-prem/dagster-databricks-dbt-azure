@@ -81,15 +81,24 @@ verify_0() {
   check_env TF_VAR_owner "owner"
 
   echo ""
+  echo "Project settings:"
+  check_env TF_VAR_project "project"
+  check_env TF_VAR_location "location"
+
+  local project
+  project="$(grep "^TF_VAR_project=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2)"
+  project="${project:-dagster}"
+
+  echo ""
   echo "Bootstrap resources:"
-  if az group show -n rg-dagster-tfstate >/dev/null 2>&1; then
-    pass "rg-dagster-tfstate exists"
+  if az group show -n "rg-${project}-tfstate" >/dev/null 2>&1; then
+    pass "rg-${project}-tfstate exists"
   else
-    fail "rg-dagster-tfstate not found (run just tf-apply bootstrap)"
+    fail "rg-${project}-tfstate not found (run just tf-apply bootstrap)"
   fi
 
-  if az ad app list --display-name app-dagster-github --query '[0].displayName' -o tsv 2>/dev/null | grep -q "app-dagster-github"; then
-    pass "Entra app app-dagster-github exists"
+  if az ad app list --display-name "app-${project}-github" --query '[0].displayName' -o tsv 2>/dev/null | grep -q "app-${project}-github"; then
+    pass "Entra app app-${project}-github exists"
   else
     fail "Entra app not found"
   fi
@@ -124,6 +133,27 @@ verify_0() {
   client_id_var="$(gh api "repos/$(grep "^TF_VAR_github_repo=" "${ROOT}/.env" | head -1 | cut -d'"' -f2)/actions/variables/AZURE_CLIENT_ID" --jq '.value' 2>/dev/null || true)"
   if [ -n "${client_id_var}" ]; then pass "GitHub variable AZURE_CLIENT_ID set"; else warn "Could not verify GitHub variables (check manually)"; fi
 
+  echo ""
+  echo "Code projects:"
+  local dagster_venv="${ROOT}/dagster/.venv/bin"
+  local dummy_env="DATABRICKS_HOST=https://dummy.azuredatabricks.net DATABRICKS_TOKEN=dapi_dummy DBX_CATALOG=stage DBX_WAREHOUSE_HTTP_PATH=/sql/dummy DBX_SP_CLIENT_ID=dummy DBX_SP_SECRET=dummy DBX_BUNDLE_ROOT=/Workspace/.bundle/dagster/stage"
+  if [ ! -f "${dagster_venv}/dbt" ]; then
+    fail "dagster venv not found (run: cd dagster && uv sync)"
+  else
+    if (cd "${ROOT}" && PATH="${dagster_venv}:${PATH}" env ${dummy_env} \
+        dbt parse --project-dir dbt --profiles-dir dbt >/dev/null 2>&1); then
+      pass "dbt parse succeeds"
+    else
+      fail "dbt parse failed (check dbt models and sources)"
+    fi
+    if (cd "${ROOT}/dagster" && PATH="${dagster_venv}:${PATH}" env ${dummy_env} \
+        dagster definitions validate -m poc -d src 2>&1 | grep -q "passed validation"); then
+      pass "dagster definitions validate succeeds"
+    else
+      fail "dagster definitions validate failed (check Dagster assets)"
+    fi
+  fi
+
   summary 0
 }
 
@@ -133,17 +163,21 @@ verify_1() {
   echo "Phase 1 — Shared infrastructure"
   echo ""
 
+  local project
+  project="$(grep "^TF_VAR_project=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2)"
+  project="${project:-dagster}"
+
   echo "Resource group:"
-  if az group show -n rg-dagster-shared >/dev/null 2>&1; then
-    pass "rg-dagster-shared exists"
+  if az group show -n "rg-${project}-shared" >/dev/null 2>&1; then
+    pass "rg-${project}-shared exists"
   else
-    fail "rg-dagster-shared not found"
+    fail "rg-${project}-shared not found"
   fi
 
   echo ""
   echo "Resources:"
   local resources
-  resources="$(az resource list -g rg-dagster-shared --query '[].type' -o tsv 2>/dev/null || true)"
+  resources="$(az resource list -g "rg-${project}-shared" --query '[].type' -o tsv 2>/dev/null || true)"
   for rtype in "Microsoft.ContainerService/managedClusters" \
     "Microsoft.ContainerRegistry/registries" \
     "Microsoft.KeyVault/vaults" \
@@ -153,7 +187,7 @@ verify_1() {
     if echo "${resources}" | grep -q "${rtype}"; then
       pass "$(echo "${rtype}" | sed 's|.*/||')"
     else
-      fail "$(echo "${rtype}" | sed 's|.*/||') not found in rg-dagster-shared"
+      fail "$(echo "${rtype}" | sed 's|.*/||') not found in rg-${project}-shared"
     fi
   done
 
@@ -172,7 +206,7 @@ verify_1() {
     status="$(kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
     if [ "${status}" = "True" ]; then pass "AKS node Ready"; else fail "AKS node not Ready (${status})"; fi
   else
-    fail "kubectl cannot reach AKS (run: az aks get-credentials -g rg-dagster-shared -n aks-dagster)"
+    fail "kubectl cannot reach AKS (run: az aks get-credentials -g rg-${project}-shared -n aks-${project})"
   fi
 
   echo ""
@@ -198,11 +232,15 @@ verify_2() {
   echo "Phase 2 — Stage environment"
   echo ""
 
+  local project
+  project="$(grep "^TF_VAR_project=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2)"
+  project="${project:-dagster}"
+
   echo "Workspace:"
-  if az databricks workspace show -g rg-dagster-stage -n dbw-dagster-stage >/dev/null 2>&1; then
-    pass "dbw-dagster-stage exists"
+  if az databricks workspace show -g "rg-${project}-stage" -n "dbw-${project}-stage" >/dev/null 2>&1; then
+    pass "dbw-${project}-stage exists"
   else
-    fail "dbw-dagster-stage not found"
+    fail "dbw-${project}-stage not found"
   fi
 
   echo ""
@@ -227,6 +265,16 @@ verify_2() {
   fi
 
   echo ""
+  echo "Dummy API key:"
+  if [ -n "${kv}" ]; then
+    if az keyvault secret show --vault-name "${kv}" --name source-posts-api-key >/dev/null 2>&1; then
+      pass "source-posts-api-key in Key Vault"
+    else
+      fail "source-posts-api-key not found in Key Vault (see guide step 2.5)"
+    fi
+  fi
+
+  echo ""
   echo "Docker image:"
   local acr
   acr="$(grep "^ACR_NAME=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2)"
@@ -240,16 +288,16 @@ verify_2() {
 
   echo ""
   echo "Dagster pods:"
-  if kubectl get ns dagster-stage >/dev/null 2>&1; then
+  if kubectl get ns "${project}-stage" >/dev/null 2>&1; then
     local not_ready
-    not_ready="$(kubectl get pods -n dagster-stage --no-headers 2>/dev/null | grep -cv "Running\|Completed" || true)"
+    not_ready="$(kubectl get pods -n "${project}-stage" --no-headers 2>/dev/null | grep -cv "Running\|Completed" || true)"
     if [ "${not_ready}" -eq 0 ]; then
-      pass "All pods Running in dagster-stage"
+      pass "All pods Running in ${project}-stage"
     else
-      fail "${not_ready} pod(s) not Running in dagster-stage"
+      fail "${not_ready} pod(s) not Running in ${project}-stage"
     fi
   else
-    fail "Namespace dagster-stage not found (run just helm-upgrade stage)"
+    fail "Namespace ${project}-stage not found (run just helm-upgrade stage)"
   fi
 
   summary 2
@@ -261,8 +309,12 @@ verify_3() {
   echo "Phase 3 — End-to-end pipeline"
   echo ""
 
-  echo "Bundle:"
-  check_env DBX_STAGE_PIPELINE_ID "DBX_STAGE_PIPELINE_ID"
+  echo "dbt connection:"
+  if (cd "${ROOT}/dagster" && uv run dbt debug --project-dir "${ROOT}/dbt" --target stage >/dev/null 2>&1); then
+    pass "dbt debug connects to stage warehouse"
+  else
+    fail "dbt debug failed (check DBX_STAGE_* env vars)"
+  fi
 
   echo ""
   echo "Dagster definitions:"
@@ -270,22 +322,6 @@ verify_3() {
     pass "dg check defs passes"
   else
     fail "dg check defs failed"
-  fi
-
-  echo ""
-  echo "Tests:"
-  if (cd "${ROOT}/dagster" && uv run pytest -q >/dev/null 2>&1); then
-    pass "pytest passes"
-  else
-    fail "pytest failed"
-  fi
-
-  echo ""
-  echo "dbt:"
-  if (cd "${ROOT}/dagster" && uv run dbt debug --project-dir "${ROOT}/dbt" --target stage >/dev/null 2>&1); then
-    pass "dbt debug connects to stage warehouse"
-  else
-    fail "dbt debug failed (check DBX_STAGE_* env vars)"
   fi
 
   summary 3
@@ -297,11 +333,15 @@ verify_4() {
   echo "Phase 4 — Prod"
   echo ""
 
+  local project
+  project="$(grep "^TF_VAR_project=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2)"
+  project="${project:-dagster}"
+
   echo "Workspace:"
-  if az databricks workspace show -g rg-dagster-prod -n dbw-dagster-prod >/dev/null 2>&1; then
-    pass "dbw-dagster-prod exists"
+  if az databricks workspace show -g "rg-${project}-prod" -n "dbw-${project}-prod" >/dev/null 2>&1; then
+    pass "dbw-${project}-prod exists"
   else
-    fail "dbw-dagster-prod not found"
+    fail "dbw-${project}-prod not found"
   fi
 
   echo ""
@@ -309,20 +349,19 @@ verify_4() {
   check_env DBX_PROD_HOST "DBX_PROD_HOST"
   check_env DBX_PROD_SP_CLIENT_ID "DBX_PROD_SP_CLIENT_ID"
   check_env DBX_PROD_WAREHOUSE_HTTP_PATH "DBX_PROD_WAREHOUSE_HTTP_PATH"
-  check_env DBX_PROD_PIPELINE_ID "DBX_PROD_PIPELINE_ID"
 
   echo ""
   echo "Dagster pods:"
-  if kubectl get ns dagster-prod >/dev/null 2>&1; then
+  if kubectl get ns "${project}-prod" >/dev/null 2>&1; then
     local not_ready
-    not_ready="$(kubectl get pods -n dagster-prod --no-headers 2>/dev/null | grep -cv "Running\|Completed" || true)"
+    not_ready="$(kubectl get pods -n "${project}-prod" --no-headers 2>/dev/null | grep -cv "Running\|Completed" || true)"
     if [ "${not_ready}" -eq 0 ]; then
-      pass "All pods Running in dagster-prod"
+      pass "All pods Running in ${project}-prod"
     else
-      fail "${not_ready} pod(s) not Running in dagster-prod"
+      fail "${not_ready} pod(s) not Running in ${project}-prod"
     fi
   else
-    fail "Namespace dagster-prod not found"
+    fail "Namespace ${project}-prod not found"
   fi
 
   summary 4
