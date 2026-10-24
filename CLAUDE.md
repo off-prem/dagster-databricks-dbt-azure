@@ -34,7 +34,7 @@ Read `docs/guide.md` first. It is the source of truth for setup steps and progre
 - `databricks/` — Databricks Asset Bundle (SDP pipeline), targets `stage`/`prod`
 - `dbt/` — dbt project targeting a Databricks SQL warehouse
 - `deploy/helm/` — Dagster Helm values (base + per env); `deploy/k8s/` — SecretProviderClass etc.
-- `scripts/` — setup-tools, setup-env/load-env, helm-upgrade, bundle-deploy, start/stop, smoke test, port-forward
+- `scripts/` — setup-tools, setup-env/load-env, helm-upgrade, bundle-deploy, stop/start, teardown/standup, smoke test, port-forward
 - `ci/pending-workflows/` — pr-checks, deploy-stage, promote-prod (parked; `git mv` into `.github/workflows/` at Phase 0.8 for pr-checks, 5.2/5.3 for the others)
 
 ## Key commands
@@ -49,7 +49,9 @@ scripts/bundle-deploy.sh stage             # bundle deploy with DATABRICKS_HOST 
 dbt build --target stage                   # from dbt/ (reads env vars via profiles.yml)
 dg check defs                              # from dagster/
 scripts/port-forward.sh stage              # Dagster UI at http://localhost:3000
-scripts/stop.sh / scripts/start.sh         # cost control
+scripts/stop.sh / scripts/start.sh         # cost control (pause — floor ~$35-40/mo)
+scripts/teardown.sh / scripts/standup.sh   # cost control (delete AKS — floor ~$15/mo)
+scripts/destroy-all.sh                     # destroy everything, start fresh
 scripts/verify.sh 0                        # verify phase 0 is complete (0-5)
 ```
 

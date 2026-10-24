@@ -147,10 +147,22 @@ port-forward env:
 smoke-test env:
     scripts/smoke-test.sh {{ env }}
 
-# Stop AKS and Postgres (cost control)
+# Stop AKS and Postgres (cost control — floor ~$35-40/mo)
 stop:
     scripts/stop.sh
 
 # Start AKS and Postgres
 start:
     scripts/start.sh
+
+# Delete AKS entirely to minimize idle cost (floor ~$15/mo); recreate with `just standup`
+teardown:
+    scripts/teardown.sh
+
+# Recreate AKS + restart Postgres after a teardown (~10-15 min)
+standup:
+    scripts/standup.sh
+
+# Destroy ALL provisioned resources (start fresh)
+destroy-all:
+    scripts/destroy-all.sh

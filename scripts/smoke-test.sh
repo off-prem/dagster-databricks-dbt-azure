@@ -13,8 +13,12 @@ esac
 
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
 
-NAMESPACE="dagster-${ENV}"
-RELEASE="dagster-${ENV}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT}/scripts/load-env.sh"
+
+PROJECT="${TF_VAR_project:-dagster}"
+NAMESPACE="${PROJECT}-${ENV}"
+RELEASE="${PROJECT}-${ENV}"
 SERVICE="${RELEASE}-dagster-webserver"
 LOCAL_PORT="${PORT:-3000}"
 GRAPHQL_URL="http://localhost:${LOCAL_PORT}/graphql"

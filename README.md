@@ -59,5 +59,18 @@ The `justfile` loads `.env` automatically. Run `just <command>`:
 | `port-forward <env>` | Dagster UI at localhost:3000 |
 | `smoke-test <env>` | Post-deploy smoke test |
 | `stop` / `start` | Stop/start AKS + Postgres (cost control) |
+| `teardown` / `standup` | Delete/recreate AKS for lower idle cost |
+| `destroy-all` | Destroy all provisioned resources (start fresh) |
+
+## Cost control
+
+Three levels, depending on how long you'll be away. See
+[stop/start](docs/concepts/stop-start.md) for details.
+
+| Command | Idle cost | Recovery | When to use |
+|---------|-----------|----------|-------------|
+| `just stop` | ~$35–40/mo | `just start` (~3–5 min) | Overnight, weekends |
+| `just teardown` | ~$15/mo | `just standup` (~10–15 min) | Gone for a week+ |
+| `just destroy-all` | $0 | Re-run guide from Phase 0.5 | Starting fresh |
 
 Built with Claude Code; `CLAUDE.md` holds its operating rules.
