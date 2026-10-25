@@ -5,7 +5,7 @@ model-paths: ["models"]
 models:
   poc:
     bronze:
-      +materialized: streaming_table
+      +materialized: table
       +schema: bronze
     silver:
       +materialized: table
