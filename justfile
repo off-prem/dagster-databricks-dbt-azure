@@ -58,8 +58,10 @@ tf-plan stack *ARGS:
     case "{{ stack }}" in
       bootstrap) terraform -chdir=infra/bootstrap plan {{ ARGS }} ;;
       shared)    terraform -chdir=infra/shared plan {{ ARGS }} ;;
-      env-stage) TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env plan -var-file=stage.tfvars {{ ARGS }} ;;
-      env-prod)  TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env plan -var-file=prod.tfvars {{ ARGS }} ;;
+      env-stage) export TF_VAR_databricks_host="${DBX_STAGE_HOST:-}"
+                 TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env plan -var-file=stage.tfvars {{ ARGS }} ;;
+      env-prod)  export TF_VAR_databricks_host="${DBX_PROD_HOST:-}"
+                 TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env plan -var-file=prod.tfvars {{ ARGS }} ;;
       *) echo "Unknown stack '{{ stack }}'. Use: bootstrap, shared, env-stage, env-prod." >&2; exit 1 ;;
     esac
 
@@ -70,8 +72,10 @@ tf-apply stack *ARGS:
     case "{{ stack }}" in
       bootstrap) terraform -chdir=infra/bootstrap apply {{ ARGS }} ;;
       shared)    terraform -chdir=infra/shared apply {{ ARGS }} ;;
-      env-stage) TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env apply -var-file=stage.tfvars {{ ARGS }} ;;
-      env-prod)  TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env apply -var-file=prod.tfvars {{ ARGS }} ;;
+      env-stage) export TF_VAR_databricks_host="${DBX_STAGE_HOST:-}"
+                 TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env apply -var-file=stage.tfvars {{ ARGS }} ;;
+      env-prod)  export TF_VAR_databricks_host="${DBX_PROD_HOST:-}"
+                 TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env apply -var-file=prod.tfvars {{ ARGS }} ;;
       *) echo "Unknown stack '{{ stack }}'. Use: bootstrap, shared, env-stage, env-prod." >&2; exit 1 ;;
     esac
 

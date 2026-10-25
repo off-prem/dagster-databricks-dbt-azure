@@ -255,8 +255,9 @@ This is where costs begin. See [costs](costs.md) for the full breakdown and
 ### 1.1 Apply shared infrastructure
 
 ```bash
-just tf-plan shared       # preview
-just tf-apply shared      # create (~10-15 min)
+just tf-init shared -upgrade   # pick up new providers (time)
+just tf-plan shared            # preview
+just tf-apply shared           # create (~10-15 min)
 ```
 
 **What it creates:**
@@ -293,13 +294,13 @@ az aks get-credentials --resource-group rg-dagster-shared --name aks-dagster
 kubectl get nodes                    # should show one node, status "Ready"
 ```
 
-Store the Postgres admin password in [Key Vault](resources/key-vault.md):
+The Postgres admin password was generated automatically by Terraform and stored in
+Key Vault as `pg-admin-password`. You can retrieve it for debugging:
 
 ```bash
-az keyvault secret set \
+az keyvault secret show \
   --vault-name "$(just show-env | grep KV_NAME | cut -d= -f2 | tr -d '"')" \
-  --name pg-admin-password \
-  --value '<your-password>'
+  --name pg-admin-password --query value -o tsv
 ```
 
 ### 1.3 Test stop/start
@@ -327,14 +328,20 @@ just verify 1
 ### 2.1 Apply stage
 
 ```bash
+just tf-init env-stage -upgrade   # pick up new providers (azuread, databricks, time)
 just tf-plan env-stage
 just tf-apply env-stage
 just collect-tf env-stage
 ```
 
-Creates: [Databricks workspace](resources/databricks-workspace.md) (`dbw-dagster-stage`),
-Access Connector, [managed identity](resources/managed-identity.md) (`id-dagster-stage`),
-Postgres DB `dagster_stage`, K8s namespace `dagster-stage`.
+Creates: resource group (`rg-dagster-stage`),
+[Databricks workspace](resources/databricks-workspace.md) (`dbw-dagster-stage`),
+Access Connector (`dbac-dagster-stage`),
+[managed identity](resources/managed-identity.md) (`id-dagster-stage`) with federated
+credential and Key Vault access.
+
+Databricks objects (catalog, SP, warehouse) are **deferred to step 2.4** — they require
+the metastore from step 2.3.
 
 Verify:
 
@@ -371,13 +378,17 @@ One-time manual step — see [Unity Catalog](concepts/unity-catalog.md) for what
 
 ### 2.4 Create workspace objects
 
+Now that the metastore is assigned, re-apply to create all Databricks objects:
+
 ```bash
-just tf-plan env-stage
+just tf-plan env-stage       # should show catalog, SP, warehouse, grants, KV secrets
 just tf-apply env-stage
+just collect-tf env-stage    # captures SP client ID and warehouse HTTP path
 ```
 
-Creates catalog, schemas, SQL warehouse, service principal, secrets in Key Vault, IP access
-list — see [Databricks workspace](resources/databricks-workspace.md) for the full list.
+Creates: catalog `stage`, schemas `bronze`/`silver`, managed volume `landing`,
+serverless SQL warehouse, service principal (`sp-dagster-stage`), IP access list,
+UC grants, and SP credentials in Key Vault.
 
 Verify:
 
@@ -386,9 +397,34 @@ Verify:
 az keyvault secret list \
   --vault-name "$(just show-env | grep KV_NAME | cut -d'"' -f2)" \
   --query '[].name' -o tsv
+
+# Should include: dbx-stage-sp-client-id, dbx-stage-sp-secret, pg-admin-password
 ```
 
-### 2.5 Store dummy API key in Key Vault
+### 2.5 Apply the SecretProviderClass
+
+The SecretProviderClass tells the CSI Secrets Store driver which Key Vault secrets
+to sync into K8s Secrets for the Dagster pods.
+
+1. Edit `deploy/k8s/stage/secretproviderclass.yaml` — replace the three placeholders
+   with values from `just show-env`:
+   - `<KV_NAME>` → KV_NAME
+   - `<TF_VAR_tenant_id>` → TF_VAR_tenant_id
+   - `<DAGSTER_STAGE_IDENTITY_CLIENT_ID>` → DAGSTER_STAGE_IDENTITY_CLIENT_ID
+
+2. Create the namespace (Helm will also create it, but we need it now):
+
+   ```bash
+   kubectl create namespace dagster-stage --dry-run=client -o yaml | kubectl apply -f -
+   ```
+
+3. Apply:
+
+   ```bash
+   kubectl apply -f deploy/k8s/stage/secretproviderclass.yaml
+   ```
+
+### 2.6 Store dummy API key in Key Vault
 
 The `posts` source in `databricks/sources.yml` points to a public API that doesn't need
 a key, but we store a dummy value anyway to test the full Key Vault → pod env → Pipes
@@ -407,7 +443,19 @@ The extract asset reads it from the pod env and forwards it to Databricks via Pi
 The entrypoint adds it as an `X-Api-Key` header — jsonplaceholder ignores the header, so
 the extract still succeeds.
 
-### 2.6 Deploy the Databricks bundle
+### 2.7 Authenticate the Databricks CLI
+
+The bundle deploy and `databricks workspace ls` commands need CLI auth. The
+Databricks CLI picks up your Azure identity from `az login` when you set the host:
+
+```bash
+export DATABRICKS_HOST="$(just show-env | grep DBX_STAGE_HOST | cut -d'"' -f2)"
+databricks auth login --host "${DATABRICKS_HOST}"
+```
+
+Verify: `databricks workspace ls /` should list workspace root contents.
+
+### 2.8 Deploy the Databricks bundle
 
 ```bash
 just bundle-validate stage    # check config
@@ -421,11 +469,10 @@ as serverless jobs via Pipes.
 Verify the files are in the workspace:
 
 ```bash
-databricks workspace ls /Workspace/.bundle/dagster/stage/files/src/extract \
-  --profile stage
+databricks workspace ls /Workspace/.bundle/dagster/stage/files/src/extract
 ```
 
-### 2.7 Build and push the Dagster image
+### 2.9 Build and push the Dagster image
 
 ```bash
 az acr build \
@@ -444,7 +491,7 @@ az acr repository show-tags \
   --repository poc -o tsv
 ```
 
-### 2.8 Deploy Dagster via Helm
+### 2.10 Deploy Dagster via Helm
 
 ```bash
 just helm-upgrade stage
@@ -460,7 +507,7 @@ Verify pods are running:
 kubectl get pods -n dagster-stage    # all pods should be Running/Ready
 ```
 
-### 2.9 Smoke test
+### 2.11 Smoke test
 
 ```bash
 just port-forward stage    # Dagster UI at http://localhost:3000
@@ -495,9 +542,17 @@ just verify 2
 
 ### 3.1 Verify dbt connection
 
+dbt needs the SP secret for OAuth. Export it from Key Vault for your local shell:
+
 ```bash
+export DBX_SP_SECRET="$(az keyvault secret show \
+  --vault-name "$(just show-env | grep KV_NAME | cut -d'"' -f2)" \
+  --name dbx-stage-sp-secret --query value -o tsv)"
 just dbt stage debug       # verify credentials and warehouse connection
 ```
+
+(Inside K8s, pods get `DBX_SP_SECRET` from the SecretProviderClass automatically.
+You only need this export for local dbt runs.)
 
 ### 3.2 Build the silver model
 
@@ -545,6 +600,7 @@ just verify 3
 ### 4.1 Apply prod
 
 ```bash
+just tf-init env-prod -upgrade    # pick up providers if not already done
 just tf-plan env-prod
 just tf-apply env-prod
 just collect-tf env-prod
@@ -565,15 +621,38 @@ metastore** to the prod workspace (don't create a new one).
 ### 4.3 Prod workspace objects
 
 ```bash
-just tf-plan env-prod
+just tf-plan env-prod      # should show catalog, SP, warehouse, etc.
 just tf-apply env-prod
+just collect-tf env-prod   # captures SP client ID and warehouse HTTP path
 ```
 
-### 4.4 Deploy to prod
+### 4.4 Apply prod SecretProviderClass
+
+Same as step 2.5, but for prod. Edit `deploy/k8s/prod/secretproviderclass.yaml`,
+replace the three placeholders with prod values from `just show-env`, then:
+
+```bash
+kubectl create namespace dagster-prod --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f deploy/k8s/prod/secretproviderclass.yaml
+```
+
+### 4.5 Store dummy API key for prod
+
+```bash
+az keyvault secret set \
+  --vault-name "$(just show-env | grep KV_NAME | cut -d= -f2 | tr -d '"')" \
+  --name source-posts-api-key \
+  --value 'dummy-test-key'
+```
+
+(This secret is shared across envs; if you already set it in Phase 2, skip this.)
+
+### 4.6 Deploy to prod
 
 **Promote, don't rebuild** — prod gets the exact image that passed on stage.
 
 ```bash
+databricks auth login --host "$(just show-env | grep DBX_PROD_HOST | cut -d'"' -f2)"
 just bundle-deploy prod     # deploy extract code to prod workspace
 just helm-upgrade prod      # deploy Dagster with prod env vars
 ```
