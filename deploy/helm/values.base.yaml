@@ -1,21 +1,105 @@
-# Dagster chart base values — shared by stage and prod. Claude completes in Phase 2.6.
-# Per-user values (image repo, Postgres host) are overridden by scripts/helm-upgrade.sh
-# from .env — they are never committed with real values.
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ Dagster Helm chart — base values (shared by stage and prod)               │
+# │                                                                           │
+# │ Helm is a package manager for Kubernetes. A "chart" is a bundle of K8s    │
+# │ resource templates. The Dagster chart creates all the pods Dagster needs:  │
+# │   - webserver: the Dagster UI (a web app for monitoring runs)             │
+# │   - daemon: the background scheduler (launches runs on a schedule)        │
+# │   - user-deployments: your code — the pipeline definitions Dagster loads  │
+# │                                                                           │
+# │ This file is the FIRST layer of values. Per-env values (values.stage.yaml │
+# │ / values.prod.yaml) override it, and helm-upgrade.sh overlays per-user   │
+# │ values (like image repo and Postgres host) from .env on top.             │
+# │                                                                           │
+# │ Per-user values (image repo, Postgres host, identity client ID) are       │
+# │ overridden by scripts/helm-upgrade.sh from .env — never committed.        │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+# ── Postgres configuration ───────────────────────────────────────────────────
+# Disable the chart's built-in Postgres (it would deploy a Postgres container
+# inside K8s). We use the external Azure Postgres Flexible Server instead.
 postgresql:
   enabled: false
+
+# Don't let Helm auto-generate a Postgres password Secret — we manage the
+# password in Key Vault and sync it via the CSI Secrets Store driver.
 generatePostgresqlPasswordSecret: false
+
+# ── Dagster webserver (the UI) ───────────────────────────────────────────────
+# ClusterIP means the web UI is only reachable inside the cluster. To access
+# it, you run `scripts/port-forward.sh stage` which tunnels localhost:3000
+# to the pod. This is intentional — no public ingress (see CLAUDE.md).
 dagsterWebserver:
   service:
     type: ClusterIP
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { memory: 512Mi }
+
+# ── Dagster daemon (the scheduler) ──────────────────────────────────────────
+# The daemon runs in the background and checks for scheduled runs, sensor
+# triggers, and run queue entries. It needs modest resources.
+dagsterDaemon:
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { memory: 512Mi }
+
+# ── Run launcher ─────────────────────────────────────────────────────────────
+# K8sRunLauncher means each Dagster run gets its own K8s Job (a short-lived
+# pod). This isolates runs from each other and from the daemon. The resource
+# limits here apply to each run pod.
 runLauncher:
   type: K8sRunLauncher
+  config:
+    k8sRunLauncher:
+      resources:
+        requests: { cpu: 500m, memory: 1Gi }
+        limits:   { memory: 1Gi }
+
+# ── Service account ──────────────────────────────────────────────────────────
+# The K8s service account (SA) is the identity pods run as inside K8s. With
+# workload identity enabled, this SA is federated to an Azure managed identity
+# (see infra/env/main.tf), letting pods call Azure APIs (Key Vault, etc.)
+# without storing any credentials. helm-upgrade.sh sets the SA name and the
+# azure.workload.identity/client-id annotation.
+serviceAccount:
+  create: true
+  annotations: {}
+
+# ── User deployments (your pipeline code) ────────────────────────────────────
+# This section defines where your Dagster code lives. The "poc" deployment
+# loads your Python module (poc.definitions) which contains all asset
+# definitions, resources, and schedules.
 dagster-user-deployments:
   enabled: true
   deployments:
     - name: poc
       image:
         repository: ""   # overridden: ${ACR_LOGIN_SERVER}/poc
-        tag: ""          # overridden: set by CI or scripts/helm-upgrade.sh
+        tag: latest
         pullPolicy: IfNotPresent
+      # dagsterApiGrpcArgs tells Dagster which Python module contains your
+      # definitions. "-m poc.definitions" means `from poc.definitions import defs`.
       dagsterApiGrpcArgs: ["-m", "poc.definitions"]
       port: 3030
+      resources:
+        requests: { cpu: 250m, memory: 512Mi }
+        limits:   { memory: 512Mi }
+      # ── CSI Secrets Store volume ──────────────────────────────────────────
+      # This mounts the SecretProviderClass (defined in deploy/k8s/) as a
+      # volume inside the pod. When the volume is mounted, the CSI driver
+      # reads secrets from Key Vault and creates K8s Secrets (dagster-dbx-*
+      # and dagster-postgres) that other parts of the chart reference.
+      # The mount path (/mnt/secrets-store) contains the raw secret files,
+      # but pods typically read them via env vars from the synced K8s Secrets.
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: dagster-secrets
+      volumeMounts:
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true

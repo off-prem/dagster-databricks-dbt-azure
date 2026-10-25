@@ -1,14 +1,33 @@
-# API sources for bronze ingestion. Add a new entry to ingest a new API.
-# Both the Dagster asset factory and the Databricks entrypoint read this file.
-#
-# Required fields: name, url
-# Optional fields: headers (dict), params (dict), auth (see below)
-#
-# Auth: secrets live in Key Vault, mounted as env vars on the Dagster pod.
-# Dagster passes them to Databricks via Pipes extras — the secret never touches code.
-#   auth:
-#     header: X-Api-Key              # request header name
-#     secret_env: SOURCE_POSTS_KEY   # env var on the Dagster pod (from Key Vault)
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ API sources for bronze ingestion                                          │
+# │                                                                           │
+# │ This file is the SINGLE SOURCE OF TRUTH for which APIs get ingested.      │
+# │ Both the Dagster asset factory (dagster/src/poc/assets/extract.py) and    │
+# │ the Databricks entrypoint (src/extract/entrypoint.py) read it.            │
+# │                                                                           │
+# │ To ingest a new API: add an entry below. Dagster will automatically       │
+# │ create an asset for it (via the asset factory pattern — no code changes   │
+# │ needed), and the Databricks job will fetch and store the data.            │
+# │                                                                           │
+# │ Required fields:                                                          │
+# │   name  — identifier used in asset names and file paths                   │
+# │   url   — the HTTP endpoint to GET                                        │
+# │                                                                           │
+# │ Optional fields:                                                          │
+# │   headers  — dict of extra HTTP headers                                   │
+# │   params   — dict of URL query parameters                                 │
+# │   auth     — authentication config (see below)                            │
+# │                                                                           │
+# │ Auth flow: secrets live in Azure Key Vault, mounted as env vars on the    │
+# │ Dagster pod via the CSI Secrets Store driver. When Dagster submits the    │
+# │ Databricks job, it passes the secret value through Pipes "extras" — so    │
+# │ the secret travels: Key Vault → K8s Secret → Dagster pod env var →       │
+# │ Pipes extras → Databricks job. It never appears in code or config files.  │
+# │                                                                           │
+# │   auth:                                                                   │
+# │     header: X-Api-Key              # the HTTP header name for the API     │
+# │     secret_env: SOURCE_POSTS_KEY   # env var on the Dagster pod (from KV) │
+# └─────────────────────────────────────────────────────────────────────────────┘
 sources:
   - name: posts
     url: https://jsonplaceholder.typicode.com/posts

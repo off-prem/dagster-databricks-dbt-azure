@@ -39,11 +39,13 @@ done
 
 set -x
 helm upgrade --install "${RELEASE}" dagster/dagster \
-  -n "${NAMESPACE}" \
+  -n "${NAMESPACE}" --create-namespace \
   -f "${ROOT}/deploy/helm/values.base.yaml" \
   -f "${ROOT}/deploy/helm/values.${ENV}.yaml" \
   --set "postgresql.postgresqlHost=${PG_FQDN:-}" \
   --set "dagster-user-deployments.deployments[0].image.repository=${ACR_LOGIN_SERVER:-}/poc" \
+  --set "serviceAccount.name=${RELEASE}" \
+  --set "serviceAccount.annotations.azure\.workload\.identity/client-id=${IDENTITY_CLIENT_ID}" \
   --set "dagster-user-deployments.deployments[0].env[2].name=DATABRICKS_HOST" \
   --set "dagster-user-deployments.deployments[0].env[2].value=${DBX_HOST}" \
   --set "dagster-user-deployments.deployments[0].env[3].name=DBX_BUNDLE_ROOT" \

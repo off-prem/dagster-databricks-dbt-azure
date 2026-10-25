@@ -1,23 +1,45 @@
-# Deploys ingestion code to the workspace for Dagster Pipes to submit.
-# Workspace host is NOT committed; the bundle CLI reads DATABRICKS_HOST from the environment.
-# Set it before running: DATABRICKS_HOST=$DBX_STAGE_HOST databricks bundle deploy -t stage
-# Or use: scripts/bundle-deploy.sh stage
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ Databricks Asset Bundle configuration                                     │
+# │                                                                           │
+# │ A "bundle" is Databricks' way of packaging and deploying code to a        │
+# │ workspace. Think of it like a deployment package: it uploads local files   │
+# │ (Python scripts, config) to the Databricks workspace so that jobs and     │
+# │ notebooks can reference them.                                             │
+# │                                                                           │
+# │ In this project, Dagster doesn't run Spark code itself — it submits       │
+# │ jobs to Databricks via "Dagster Pipes." The bundle deploys the Python     │
+# │ scripts (src/extract/) that those submitted jobs run.                     │
+# │                                                                           │
+# │ Deploy with: scripts/bundle-deploy.sh stage                              │
+# │   (or: DATABRICKS_HOST=$DBX_STAGE_HOST databricks bundle deploy -t stage) │
+# │                                                                           │
+# │ The workspace host URL is NOT committed here — the Databricks CLI reads   │
+# │ DATABRICKS_HOST from the environment. This keeps the config portable      │
+# │ across different workspace URLs.                                          │
+# └─────────────────────────────────────────────────────────────────────────────┘
 bundle:
   name: dagster
 
+# Variables are parameterized values that differ per target (stage vs prod).
+# They're referenced in resource definitions with ${var.catalog}.
 variables:
   catalog:
     description: Unity Catalog catalog for this environment
 
+# Uncomment this to split resource definitions (jobs, pipelines) into
+# separate YAML files in a resources/ directory:
 # include:
 #   - resources/*.yml
 
+# Targets are like environments. Each target sets its own variable values.
+# `mode: production` enables stricter validation and deploys to the workspace's
+# production area (/Workspace/.bundle/dagster/<target>/files/).
 targets:
   stage:
     mode: production
     variables:
-      catalog: stage
+      catalog: stage     # maps to the Unity Catalog "stage" catalog
   prod:
     mode: production
     variables:
-      catalog: prod
+      catalog: prod      # maps to the Unity Catalog "prod" catalog

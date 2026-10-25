@@ -207,6 +207,12 @@ install_jq
 install_just
 
 echo
+echo "Adding Helm repositories..."
+helm repo add dagster https://dagster-io.github.io/helm 2>/dev/null || true
+helm repo update dagster
+echo "  dagster Helm repo ready"
+
+echo
 echo "Syncing Python project dependencies..."
 (cd "${ROOT}/dagster" && uv sync --quiet)
 echo "  dagster/ virtualenv ready (includes dbt)"

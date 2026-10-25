@@ -1,14 +1,25 @@
-# Prod environment values. Diff against values.stage.yaml must be trivial.
-# Per-user values are overridden by scripts/helm-upgrade.sh from .env.
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ Prod environment overrides                                                │
+# │                                                                           │
+# │ Same structure as values.stage.yaml — diff should be trivial (just env-   │
+# │ specific names). Per-user values overridden by helm-upgrade.sh from .env. │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
 global:
   postgresqlSecretName: dagster-postgres
+
 postgresql:
   postgresqlHost: ""        # overridden: ${PG_FQDN}
   postgresqlDatabase: dagster_prod
-  postgresqlUsername: dagster_prod
+  postgresqlUsername: pgadmin
+  postgresqlParams:
+    sslmode: require
+
 dagster-user-deployments:
   deployments:
     - name: poc
+      labels:
+        azure.workload.identity/use: "true"
       env:
         - name: DAGSTER_ENV
           value: prod
@@ -21,4 +32,4 @@ dagster-user-deployments:
         - name: DBX_WAREHOUSE_HTTP_PATH
           value: ""         # overridden: ${DBX_PROD_WAREHOUSE_HTTP_PATH}
       envSecrets:
-        - name: dagster-dbx-prod     # synced by SecretProviderClass
+        - name: dagster-dbx-prod
