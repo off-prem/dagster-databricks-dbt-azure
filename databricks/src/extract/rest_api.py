@@ -17,7 +17,6 @@ The Volume path follows Unity Catalog's three-level namespace:
   e.g. /Volumes/stage/bronze/landing/posts/20261024_153000.json
 """
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -68,8 +67,7 @@ def extract_to_volume(source_name, catalog, auth_headers=None):
 
     # Write as newline-delimited JSON (one JSON object per line) — the standard
     # format for loading into Delta tables via Databricks.
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    volume_path = f"/Volumes/{catalog}/bronze/landing/{source_name}/{timestamp}.json"
+    volume_path = f"/Volumes/{catalog}/bronze/landing/{source_name}/latest.json"
 
     with open(volume_path, "w") as f:
         f.write("\n".join(json.dumps(record) for record in data))
