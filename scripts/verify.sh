@@ -44,7 +44,7 @@ verify_0() {
   echo ""
 
   echo "Tools:"
-  for tool in az terraform helm kubectl databricks just uv gh; do
+  for tool in az terraform helm kubectl kubelogin databricks just uv gh; do
     check_cmd "${tool}" "${tool}"
   done
   if (cd "${ROOT}/dagster" && uv run dg --version >/dev/null 2>&1); then
@@ -159,10 +159,138 @@ verify_0() {
 
 # ── Phase 1 ─────────────────────────────────────────────────────────────────
 
+check_skus() {
+  echo "SKU pre-flight:"
+
+  local location
+  location="$(grep "^TF_VAR_location=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2)"
+  location="${location:-eastus2}"
+
+  local aks_vm_size
+  aks_vm_size="$(grep "^TF_VAR_aks_vm_size=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2 || true)"
+  aks_vm_size="${aks_vm_size:-Standard_D2as_v6}"
+
+  local pg_location
+  pg_location="$(grep "^TF_VAR_pg_location=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2 || true)"
+  pg_location="${pg_location:-centralus}"
+
+  local pg_sku_name
+  pg_sku_name="$(grep "^TF_VAR_pg_sku_name=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2 || true)"
+  pg_sku_name="${pg_sku_name:-B_Standard_B2s}"
+
+  # ── AKS VM size ──
+  local aks_sku_json
+  aks_sku_json="$(az vm list-skus --size "${aks_vm_size}" --location "${location}" -o json 2>/dev/null || echo "[]")"
+  local aks_sku_count
+  aks_sku_count="$(echo "${aks_sku_json}" | python3 -c "import json,sys; data=json.load(sys.stdin); print(len(data))" 2>/dev/null || echo "0")"
+
+  if [ "${aks_sku_count}" = "0" ]; then
+    fail "AKS VM size ${aks_vm_size} not found in ${location}"
+    echo "        Try: az vm list-skus --location ${location} --size Standard_D2 -o table"
+    echo "        Then set TF_VAR_aks_vm_size in .env to an available size"
+  else
+    local aks_restricted
+    aks_restricted="$(echo "${aks_sku_json}" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for sku in data:
+    for r in sku.get('restrictions', []):
+        if r.get('reasonCode') == 'NotAvailableForSubscription' and r.get('type') == 'Location':
+            print('blocked')
+            sys.exit(0)
+print('ok')
+" 2>/dev/null || echo "unknown")"
+
+    if [ "${aks_restricted}" = "blocked" ]; then
+      fail "AKS VM size ${aks_vm_size} is blocked for your subscription in ${location}"
+      echo "        Try: az vm list-skus --location ${location} --size Standard_D2 -o table"
+      echo "        Then set TF_VAR_aks_vm_size in .env to an unrestricted size"
+    else
+      pass "AKS VM size ${aks_vm_size} available in ${location}"
+    fi
+  fi
+
+  # ── Postgres SKU ──
+  local pg_tier pg_compute
+  pg_tier="$(echo "${pg_sku_name}" | cut -d_ -f1)"
+  pg_compute="$(echo "${pg_sku_name}" | cut -d_ -f2-)"
+
+  local pg_edition
+  case "${pg_tier}" in
+    B)  pg_edition="Burstable" ;;
+    GP) pg_edition="GeneralPurpose" ;;
+    MO) pg_edition="MemoryOptimized" ;;
+    *)  pg_edition="" ;;
+  esac
+
+  local pg_skus_json
+  pg_skus_json="$(az postgres flexible-server list-skus --location "${pg_location}" -o json 2>/dev/null || echo "[]")"
+
+  local pg_match
+  pg_match="$(echo "${pg_skus_json}" | python3 -c "
+import json, sys
+edition = '${pg_edition}'
+compute = '${pg_compute}'
+data = json.load(sys.stdin)
+for cap in data:
+    for ed in cap.get('supportedServerEditions', []):
+        if ed['name'] == edition:
+            for sku in ed.get('supportedServerSkus', []):
+                if sku['name'] == compute:
+                    print('found')
+                    sys.exit(0)
+print('missing')
+" 2>/dev/null || echo "error")"
+
+  if [ "${pg_match}" = "found" ]; then
+    pass "Postgres SKU ${pg_sku_name} available in ${pg_location}"
+  elif [ "${pg_match}" = "missing" ]; then
+    fail "Postgres SKU ${pg_sku_name} not available in ${pg_location}"
+
+    local alt_regions=""
+    for region in centralus eastus eastus2 westus2 northeurope westeurope; do
+      [ "${region}" = "${pg_location}" ] && continue
+      local check
+      check="$(az postgres flexible-server list-skus --location "${region}" -o json 2>/dev/null || echo "[]")"
+      local found
+      found="$(echo "${check}" | python3 -c "
+import json, sys
+edition = '${pg_edition}'
+compute = '${pg_compute}'
+data = json.load(sys.stdin)
+for cap in data:
+    for ed in cap.get('supportedServerEditions', []):
+        if ed['name'] == edition:
+            for sku in ed.get('supportedServerSkus', []):
+                if sku['name'] == compute:
+                    print('yes')
+                    sys.exit(0)
+print('no')
+" 2>/dev/null || echo "no")"
+      if [ "${found}" = "yes" ]; then
+        alt_regions="${alt_regions} ${region}"
+      fi
+    done
+
+    if [ -n "${alt_regions}" ]; then
+      echo "        Available in:${alt_regions}"
+      echo "        Set TF_VAR_pg_location in .env to one of these regions"
+    else
+      echo "        No B-series Postgres found — upgrade to Pay-As-You-Go or use GP tier"
+      echo "        Set TF_VAR_pg_sku_name=GP_Standard_D2ds_v5 in .env (costs more)"
+    fi
+  else
+    warn "Could not check Postgres SKU availability (API error)"
+  fi
+}
+
 verify_1() {
   echo "Phase 1 — Shared infrastructure"
   echo ""
 
+  check_skus
+
+  echo ""
   local project
   project="$(grep "^TF_VAR_project=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2)"
   project="${project:-dagster}"

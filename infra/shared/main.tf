@@ -159,12 +159,12 @@ resource "azurerm_kubernetes_cluster" "this" {
   dns_prefix          = "aks-${var.project}"
   sku_tier            = "Free"    # Free tier — no SLA, fine for a POC
 
-  # The node pool defines the VMs that run containers. One B2ms node
-  # (2 vCPU, 8 GB RAM) is enough for this POC.
+  # The node pool defines the VMs that run containers. One 2-vCPU node
+  # is enough for this POC. VM size is configurable via var.aks_vm_size.
   default_node_pool {
     name           = "system"
     node_count     = 1
-    vm_size        = "Standard_B2ms"
+    vm_size        = var.aks_vm_size
     os_disk_size_gb = 32
     vnet_subnet_id = azurerm_subnet.aks.id   # place nodes in the AKS subnet
   }
@@ -213,6 +213,14 @@ resource "azurerm_kubernetes_cluster" "this" {
   }
 
   tags = local.tags
+}
+
+# Grant the person running Terraform cluster-admin access via Azure RBAC,
+# so `kubectl` works after `az aks get-credentials` + `kubelogin convert-kubeconfig -l azurecli`.
+resource "azurerm_role_assignment" "aks_cluster_admin" {
+  scope                = azurerm_kubernetes_cluster.this.id
+  role_definition_name = "Azure Kubernetes Service RBAC Cluster Admin"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 # ── AKS egress IP lookup ─────────────────────────────────────────────────────
@@ -268,7 +276,7 @@ resource "azurerm_key_vault" "this" {
   location                   = azurerm_resource_group.shared.location
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
-  enable_rbac_authorization  = true
+  rbac_authorization_enabled = true
   purge_protection_enabled   = false     # false for POC — lets us fully delete
   soft_delete_retention_days = 7         # minimum retention
 
@@ -317,16 +325,17 @@ resource "azurerm_key_vault_secret" "pg_admin_password" {
 # sensor state. This is NOT where your data pipeline data lives (that's in
 # Databricks / ADLS).
 #
-# B1ms is the cheapest burstable tier (~$12/mo). Two databases are created:
-# one for stage, one for prod — so both environments can share the same server
-# without interfering with each other.
+# Two databases are created: one for stage, one for prod — so both environments
+# can share the same server without interfering with each other.
+# Location and SKU are configurable — Postgres B-series SKUs are unavailable in
+# some regions (e.g. eastus2). centralus is the default fallback.
 
 resource "azurerm_postgresql_flexible_server" "this" {
-  name                          = "pg-${var.project}"
+  name                          = "pg-${var.project}-${random_string.suffix.result}"
   resource_group_name           = azurerm_resource_group.shared.name
-  location                      = azurerm_resource_group.shared.location
-  version                       = "16"
-  sku_name                      = "B_Standard_B1ms"   # 1 vCPU, 2 GB RAM
+  location                      = var.pg_location
+  version                       = var.pg_version
+  sku_name                      = var.pg_sku_name
   storage_mb                    = 32768                # 32 GB storage
   administrator_login           = "pgadmin"
   administrator_password        = random_password.pg_admin.result
@@ -334,6 +343,10 @@ resource "azurerm_postgresql_flexible_server" "this" {
   geo_redundant_backup_enabled  = false     # save cost — single-region is fine for POC
   public_network_access_enabled = true      # reachable from AKS and your machine
   tags                          = local.tags
+
+  lifecycle {
+    ignore_changes = [zone]
+  }
 }
 
 # Postgres firewall rules — only AKS pods and your machine can connect.

@@ -28,7 +28,7 @@ Every resource the POC provisions, the phase that creates it, what it costs, and
 | AKS node pool | 1× Standard_B2ms (2 vCPU / 8 GB), 32 GB OS disk | Only compute Dagster needs | ~60 running | **Stopped by `just stop`** |
 | Node OS disk (P4 32 GB) | (attached to node pool) | Persists while pool exists | ~5 | Bills when stopped |
 | Standard LB + public IP | (AKS default outbound) | Pod egress. **No inbound rules.** | ~20 | Bills when stopped |
-| Postgres Flexible Server | `pg-{project}` — B1ms, 32 GB, no HA, 7-day backup | Dagster state; DBs `{project}_stage`, `{project}_prod` | ~17 running, ~4 stopped | **Stopped by `just stop`** |
+| Postgres Flexible Server | `pg-{project}-<random>` — B2s, 32 GB, no HA, 7-day backup (may be cross-region) | Dagster state; DBs `{project}_stage`, `{project}_prod` | ~25 running, ~6 stopped | **Stopped by `just stop`** |
 | ACR (Basic) | `acr{project}<random>` | Dagster code image | ~5 | — |
 | Key Vault (Standard) | `kv-{project}-<random>` | SP secrets, PG password, API key | <1 | — |
 | Storage account (ADLS Gen2) | `st{project}<random>` — LRS, HNS, key auth off, firewall | UC metastore root + external location | ~2 | — |

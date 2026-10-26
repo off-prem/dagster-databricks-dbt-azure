@@ -13,7 +13,7 @@ source "${ROOT}/scripts/load-env.sh"
 PROJECT="${TF_VAR_project:-dagster}"
 RG_SHARED="rg-${PROJECT}-shared"
 AKS_NAME="aks-${PROJECT}"
-PG_NAME="pg-${PROJECT}"
+PG_NAME="${PG_FQDN%%.*}"
 
 echo "=== Teardown ==="
 echo "This DELETES AKS and Postgres to minimize idle cost."
