@@ -365,7 +365,7 @@ verify_2() {
   project="${project:-dagster}"
 
   echo "Workspace:"
-  if az databricks workspace show -g "rg-${project}-stage" -n "dbw-${project}-stage" >/dev/null 2>&1; then
+  if az resource show --resource-group "rg-${project}-stage" --name "dbw-${project}-stage" --resource-type "Microsoft.Databricks/workspaces" >/dev/null 2>&1; then
     pass "dbw-${project}-stage exists"
   else
     fail "dbw-${project}-stage not found"
@@ -483,7 +483,7 @@ verify_4() {
   project="${project:-dagster}"
 
   echo "Workspace:"
-  if az databricks workspace show -g "rg-${project}-prod" -n "dbw-${project}-prod" >/dev/null 2>&1; then
+  if az resource show --resource-group "rg-${project}-prod" --name "dbw-${project}-prod" --resource-type "Microsoft.Databricks/workspaces" >/dev/null 2>&1; then
     pass "dbw-${project}-prod exists"
   else
     fail "dbw-${project}-prod not found"

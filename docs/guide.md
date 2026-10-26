@@ -375,7 +375,7 @@ Verify:
 
 ```bash
 # Workspace exists
-az databricks workspace show -g rg-dagster-stage -n dbw-dagster-stage --query name -o tsv
+az resource show --resource-group rg-dagster-stage --name dbw-dagster-stage --resource-type "Microsoft.Databricks/workspaces" --query name -o tsv
 
 # Stage outputs captured
 just show-env | grep DBX_STAGE
@@ -473,15 +473,17 @@ the extract still succeeds.
 
 ### 2.7 Authenticate the Databricks CLI ✅
 
-The bundle deploy and `databricks workspace ls` commands need CLI auth. The
-Databricks CLI picks up your Azure identity from `az login` when you set the host:
+The bundle deploy and `databricks workspace list` commands need CLI auth. The
+deploy scripts set `DATABRICKS_AUTH_TYPE=azure-cli` so the Databricks CLI reuses
+your existing `az login` session — no separate login step is needed.
+
+Verify:
 
 ```bash
-export DATABRICKS_HOST="$(just show-env | grep DBX_STAGE_HOST | cut -d'"' -f2)"
-databricks auth login --host "${DATABRICKS_HOST}"
+source scripts/load-env.sh && DATABRICKS_HOST="$DBX_STAGE_HOST" DATABRICKS_AUTH_TYPE=azure-cli databricks workspace list /
 ```
 
-Verify: `databricks workspace ls /` should list workspace root contents.
+This should list workspace root contents (`/Users`, `/Shared`, etc.).
 
 ### 2.8 Deploy the Databricks bundle ✅
 
@@ -631,28 +633,34 @@ just verify 3
 
 ## Phase 4 — Prod (Goal 3: stage/prod parity)
 
-### 4.1 Apply prod
+### 4.1 Apply prod ✅
 
 ```bash
 just tf-init env-prod -upgrade    # pick up providers if not already done
 just tf-plan env-prod
-just tf-apply env-prod
+just tf-apply env-prod            # Databricks workspace-level resources will fail — expected
 just collect-tf env-prod
 ```
+
+The apply creates Azure resources (RG, workspace, identity, KV secrets) but Databricks
+workspace-level resources (catalog, schemas, warehouse) fail because you haven't logged
+into the new workspace yet. That's normal — they're created in step 4.3 after the login.
 
 Verify:
 
 ```bash
-az databricks workspace show -g rg-dagster-prod -n dbw-dagster-prod --query name -o tsv
+az resource show --resource-group rg-dagster-prod --name dbw-dagster-prod --resource-type "Microsoft.Databricks/workspaces" --query name -o tsv
 just show-env | grep DBX_PROD
 ```
 
-### 4.2 First login to prod workspace
+### 4.2 First login to prod workspace ✅
 
-Open `DBX_PROD_HOST`, log in, accept trial. In the account console, **assign the existing
-metastore** to the prod workspace (don't create a new one).
+Open `DBX_PROD_HOST`, log in, accept trial. If the workspace is in the same region as
+your existing metastore, Databricks auto-assigns it — verify in the account console under
+**Catalog → Metastore → Workspaces** that `dbw-dagster-prod` appears. If not, assign it
+manually (don't create a new metastore).
 
-### 4.3 Prod workspace objects
+### 4.3 Prod workspace objects ✅
 
 ```bash
 just tf-plan env-prod      # should show catalog, SP, warehouse, etc.
@@ -660,17 +668,18 @@ just tf-apply env-prod
 just collect-tf env-prod   # captures SP client ID and warehouse HTTP path
 ```
 
-### 4.4 Apply prod SecretProviderClass
+### 4.4 Apply prod SecretProviderClass ✅
 
-Same as step 2.5, but for prod. Edit `deploy/k8s/prod/secretproviderclass.yaml`,
-replace the three placeholders with prod values from `just show-env`, then:
+Same as step 2.5, but for prod. The template uses `${VAR}` placeholders resolved
+via envsubst from `.env`:
 
 ```bash
+source scripts/load-env.sh
 kubectl create namespace dagster-prod --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -f deploy/k8s/prod/secretproviderclass.yaml
+envsubst < deploy/k8s/prod/secretproviderclass.yaml | kubectl apply -f -
 ```
 
-### 4.5 Store dummy API key for prod
+### 4.5 Store dummy API key for prod ✅
 
 ```bash
 az keyvault secret set \
@@ -681,13 +690,12 @@ az keyvault secret set \
 
 (This secret is shared across envs; if you already set it in Phase 2, skip this.)
 
-### 4.6 Deploy to prod
+### 4.6 Deploy to prod ✅
 
 **Promote, don't rebuild** — prod gets the exact image that passed on stage.
 
 ```bash
-databricks auth login --host "$(just show-env | grep DBX_PROD_HOST | cut -d'"' -f2)"
-just bundle-deploy prod     # deploy extract code to prod workspace
+just bundle-deploy prod     # deploy extract code to prod workspace (uses az login)
 just helm-upgrade prod      # deploy Dagster with prod env vars
 ```
 
