@@ -57,9 +57,9 @@ scripts/verify.sh 0                        # verify phase 0 is complete (0-5)
 
 ## Current state
 <!-- Update after every phase. A fresh session reads this first. -->
-- Phase: 3 (complete)
-- Steps with ✅ in `docs/guide.md`: 0.1–0.9, 1.1–1.4, 2.1–2.11, 3.1–3.3
-- Next step: 4.1 apply prod environment
+- Phase: 4 (complete)
+- Steps with ✅ in `docs/guide.md`: 0.1–0.9, 1.1–1.4, 2.1–2.11, 3.1–3.3, 4.1–4.6
+- Next step: 5.1 activate CI/CD workflows
 - Known blockers: none
 - Values collected: ACR_NAME, PG_FQDN, KV_NAME, STORAGE_ACCOUNT_NAME, AKS_EGRESS_IP in `.env`
 - Note: Postgres runs in centralus (B-series unavailable in eastus2); AKS uses D2as_v6 (B-series VMs unavailable)

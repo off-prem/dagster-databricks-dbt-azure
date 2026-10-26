@@ -20,7 +20,11 @@ RELEASE="${PROJECT}-${ENV}"
 # name follows "<release>-dagster-webserver" as of current chart versions, but pin it here
 # if that ever differs.
 SERVICE="${RELEASE}-dagster-webserver"
-LOCAL_PORT="${PORT:-3000}"
+if [ "${ENV}" = prod ]; then
+  LOCAL_PORT="${PORT:-3001}"
+else
+  LOCAL_PORT="${PORT:-3000}"
+fi
 
 echo "Port-forwarding ${SERVICE} (namespace ${NAMESPACE}) -> http://localhost:${LOCAL_PORT}"
 kubectl port-forward -n "${NAMESPACE}" "svc/${SERVICE}" "${LOCAL_PORT}:80"
