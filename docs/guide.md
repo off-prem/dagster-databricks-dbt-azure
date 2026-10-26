@@ -393,21 +393,6 @@ just show-env | grep DBX_STAGE
 
 One-time manual step — see [Unity Catalog](concepts/unity-catalog.md) for what this is.
 
-> **Personal email accounts (Gmail, Outlook.com, etc.):** The Databricks account
-> console at accounts.azuredatabricks.net does not accept personal Microsoft accounts.
-> If you created your Azure free account with a personal email, you'll get:
-> *"User account is a personal Microsoft account. Personal Microsoft accounts are not
-> supported for this application."*
->
-> **Fix:** Create a native organizational user in your Entra tenant:
-> 1. Azure Portal → **Microsoft Entra ID** → **Users** → **New user** → **Create new user**
-> 2. UPN: `admin@<your-tenant>.onmicrosoft.com` (find your tenant name with
->    `az ad signed-in-user show --query userPrincipalName -o tsv` — the part after `@`)
-> 3. Assign the new user the **Global Administrator** Entra role and **Owner** on your subscription
-> 4. Sign into the account console in an incognito window with the new user
->
-> Corporate/organizational Azure accounts don't hit this — skip straight to step 1.
-
 1. Go to [accounts.azuredatabricks.net](https://accounts.azuredatabricks.net)
 2. **Catalog** → **Create metastore**
 3. Fill in:
@@ -449,22 +434,23 @@ az keyvault secret list \
 The SecretProviderClass tells the CSI Secrets Store driver which Key Vault secrets
 to sync into K8s Secrets for the Dagster pods.
 
-The template uses `${VAR}` placeholders filled from `.env` at deploy time (no
-account-specific values are committed). **You must use `envsubst`** — applying the
-raw template leaves Key Vault name, tenant ID, and client ID blank, and the CSI
-driver will fail with `keyvaultName is not provided`.
+1. Edit `deploy/k8s/stage/secretproviderclass.yaml` — replace the three placeholders
+   with values from `just show-env`:
+   - `<KV_NAME>` → KV_NAME
+   - `<TF_VAR_tenant_id>` → TF_VAR_tenant_id
+   - `<DAGSTER_STAGE_IDENTITY_CLIENT_ID>` → DAGSTER_STAGE_IDENTITY_CLIENT_ID
 
-```bash
-kubectl create namespace dagster-stage --dry-run=client -o yaml | kubectl apply -f -
-source scripts/load-env.sh && envsubst < deploy/k8s/stage/secretproviderclass.yaml | kubectl apply -f -
-```
+2. Create the namespace (Helm will also create it, but we need it now):
 
-Verify the values were resolved:
+   ```bash
+   kubectl create namespace dagster-stage --dry-run=client -o yaml | kubectl apply -f -
+   ```
 
-```bash
-kubectl get secretproviderclass dagster-secrets -n dagster-stage -o yaml | grep keyvaultName
-# Should show your actual Key Vault name, not an empty string
-```
+3. Apply:
+
+   ```bash
+   kubectl apply -f deploy/k8s/stage/secretproviderclass.yaml
+   ```
 
 ### 2.6 Store dummy API key in Key Vault ✅
 
@@ -514,32 +500,16 @@ Verify the files are in the workspace:
 databricks workspace ls /Workspace/.bundle/dagster/stage/files/src/extract
 ```
 
-### 2.9 Build and push the Dagster image ✅
-
-**Test locally first** (if Docker Desktop is available) to catch build errors without
-waiting for an ACR round-trip (~3 min):
-
-```bash
-docker build -f dagster/Dockerfile -t poc:local .
-docker run --rm poc:local python -c "import poc.definitions; print('OK')"
-```
-
-If no local Docker, skip straight to the ACR build — errors will show in the build log.
+### 2.9 Build and push the Dagster image
 
 ```bash
 az acr build \
   --registry "$(just show-env | grep ACR_NAME | cut -d= -f2 | tr -d '"')" \
   --image poc:latest \
-  -f dagster/Dockerfile .
+  dagster/
 ```
 
 Builds the Docker image in the cloud via [ACR](resources/acr.md) — no local Docker needed.
-
-> **dbt manifest:** The Dockerfile does **not** run `dbt parse` at build time because
-> `dbt-databricks` tries to authenticate even during parse, causing hangs with
-> placeholder credentials. Instead, the image sets `DAGSTER_DBT_PARSE_PROJECT_ON_LOAD=1`
-> so the manifest is generated at pod startup using real credentials from the pod env.
-> Phase 5 CI will pre-build the manifest with real credentials and remove this.
 
 Verify the image was pushed:
 
@@ -549,23 +519,21 @@ az acr repository show-tags \
   --repository poc -o tsv
 ```
 
-### 2.10 Deploy Dagster via Helm ✅
+### 2.10 Deploy Dagster via Helm
 
 ```bash
 just helm-upgrade stage
 ```
 
-Deploys Dagster into `dagster-stage`. The script resolves `${VAR}` placeholders
-in `deploy/helm/values.stage.yaml` via `envsubst` (per-user values from `.env`)
-and passes the result to Helm. See [Helm deployments](concepts/helm-deployments.md)
-for how values are layered.
+Deploys Dagster into `dagster-stage`. The Helm values inject `DBX_BUNDLE_ROOT`
+(computed from project name + env) and `DATABRICKS_HOST` into the pod. See
+[Helm deployments](concepts/helm-deployments.md) for how values are layered.
 
 Verify pods are running:
 
 ```bash
 kubectl get pods -n dagster-stage    # all pods should be Running/Ready
 ```
-
 
 ### 2.11 Smoke test
 
@@ -600,31 +568,37 @@ just verify 2
 
 ## Phase 3 — dbt and end-to-end lineage (Goal 2: end-to-end pipeline)
 
-### 3.1 Verify dbt connection
+### 3.1 Verify dbt connection ✅
 
-dbt needs the SP secret for OAuth. Export it from Key Vault for your local shell:
+`just dbt` auto-fetches `DBX_SP_SECRET` from Key Vault, so no manual export needed:
 
 ```bash
-export DBX_SP_SECRET="$(az keyvault secret show \
-  --vault-name "$(just show-env | grep KV_NAME | cut -d'"' -f2)" \
-  --name dbx-stage-sp-secret --query value -o tsv)"
 just dbt stage debug       # verify credentials and warehouse connection
 ```
 
-(Inside K8s, pods get `DBX_SP_SECRET` from the SecretProviderClass automatically.
-You only need this export for local dbt runs.)
+(Inside K8s, pods get `DBX_SP_SECRET` from the SecretProviderClass automatically.)
 
-### 3.2 Build the silver model
+**Gotcha — serverless SQL warehouse + ADLS firewall:** The storage account firewall
+(`defaultAction: Deny`) blocks serverless compute. Resource access rules for the
+access connector alone are NOT sufficient. You must create an Azure Network Security
+Perimeter (NSP) with the `AzureDatabricksServerless` service tag and associate the
+storage account in Learning/Transition mode. This is done in `infra/shared/main.tf`.
+
+**Gotcha — dbt-databricks auth fields:** The adapter warns to use `azure_client_id`/
+`azure_client_secret`, but the [official Microsoft docs](https://learn.microsoft.com/en-us/azure/databricks/integrations/configure-oauth-dbt)
+show `client_id`/`client_secret` with `auth_type: oauth` for Databricks OAuth M2M.
+Both work; we use `client_id`/`client_secret` per the docs. The warning is cosmetic.
+
+### 3.2 Build the silver model ✅
 
 ```bash
-just dbt stage build       # builds bronze streaming table + silver view
+just dbt stage build       # builds bronze table + silver table
 ```
 
 This runs two dbt models:
 
-- **`bronze/posts`** — `CREATE OR REFRESH STREAMING TABLE` using `STREAM read_files()`.
-  Auto Loader picks up the NDJSON files that `raw_posts` wrote to the landing volume.
-- **`silver/silver_source`** — selects from the bronze streaming table with any transforms.
+- **`bronze/posts`** — `read_files()` from the landing volume (JSON files written by `raw_posts`).
+- **`silver/silver_source`** — selects from the bronze table with column renames.
 
 Verify the data landed:
 
@@ -634,7 +608,7 @@ Verify the data landed:
 # Should return > 0 rows
 ```
 
-### 3.3 End-to-end lineage
+### 3.3 End-to-end lineage ✅
 
 ```bash
 just port-forward stage    # Dagster UI at http://localhost:3000
@@ -753,24 +727,7 @@ git commit -m "ci: activate deploy and promote workflows"
 Push a trivial PR. After merge: `deploy-stage` runs automatically → `promote-prod` waits
 for your approval in GitHub → Actions → **Review deployments** → **Approve and deploy**.
 
-### 5.5 Pre-build dbt manifest in CI
-
-The Dockerfile currently sets `DAGSTER_DBT_PARSE_PROJECT_ON_LOAD=1`, so every pod
-(code server **and** each run pod) runs `dbt parse` at startup (~10 s). This is
-the biggest avoidable contributor to run startup latency.
-
-Fix: add a CI step that runs `dbt parse` with real credentials and bakes the
-resulting `dbt/target/manifest.json` into the image. Then remove the env var.
-
-```dockerfile
-# In CI only — requires DATABRICKS_HOST, DBX_SP_CLIENT_ID, etc.
-RUN cd /app/dbt && dbt parse --profiles-dir /app/dbt
-```
-
-After this, run pods start in ~15–20 s (pod scheduling + image layer check)
-instead of ~30+ s.
-
-### 5.6 Harden
+### 5.5 Harden
 
 - Restrict the Entra app's RBAC to just the three resource groups + ACR + AKS
 - Copy `.github/CODEOWNERS.example` to `.github/CODEOWNERS`

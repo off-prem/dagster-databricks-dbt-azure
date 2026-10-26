@@ -437,8 +437,22 @@ verify_3() {
   echo "Phase 3 — End-to-end pipeline"
   echo ""
 
+  # dbt and dagster-dbt need Databricks env vars to connect / parse
+  export DATABRICKS_HOST="${DBX_STAGE_HOST:-}"
+  export DBX_WAREHOUSE_HTTP_PATH="${DBX_STAGE_WAREHOUSE_HTTP_PATH:-}"
+  export DBX_SP_CLIENT_ID="${DBX_STAGE_SP_CLIENT_ID:-}"
+  export DBX_CATALOG=stage
+  export DAGSTER_ENV=stage
+  if [ -z "${DBX_SP_SECRET:-}" ]; then
+    local kv
+    kv="$(grep "^KV_NAME=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2)"
+    if [ -n "${kv}" ]; then
+      export DBX_SP_SECRET="$(az keyvault secret show --vault-name "${kv}" --name "dbx-stage-sp-secret" --query value -o tsv 2>/dev/null || true)"
+    fi
+  fi
+
   echo "dbt connection:"
-  if (cd "${ROOT}/dagster" && uv run dbt debug --project-dir "${ROOT}/dbt" --target stage >/dev/null 2>&1); then
+  if (cd "${ROOT}/dagster" && uv run dbt debug --project-dir "${ROOT}/dbt" --profiles-dir "${ROOT}/dbt" --target stage >/dev/null 2>&1); then
     pass "dbt debug connects to stage warehouse"
   else
     fail "dbt debug failed (check DBX_STAGE_* env vars)"
@@ -446,10 +460,13 @@ verify_3() {
 
   echo ""
   echo "Dagster definitions:"
-  if (cd "${ROOT}/dagster" && uv run dg check defs >/dev/null 2>&1); then
-    pass "dg check defs passes"
+  export DAGSTER_DBT_PARSE_PROJECT_ON_LOAD=1
+  export DBT_PROFILES_DIR="${ROOT}/dbt"
+  export DBX_BUNDLE_ROOT="/Workspace/.bundle/${TF_VAR_project:-dagster}/stage/files"
+  if (cd "${ROOT}/dagster" && uv run dagster definitions validate -m poc.definitions >/dev/null 2>&1); then
+    pass "dagster definitions validate passes"
   else
-    fail "dg check defs failed"
+    fail "dagster definitions validate failed"
   fi
 
   summary 3

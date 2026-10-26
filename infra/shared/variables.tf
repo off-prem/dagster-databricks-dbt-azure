@@ -63,6 +63,19 @@ variable "pg_version" {
   description = "Postgres major version"
 }
 
+variable "access_connector_id_stage" {
+  type        = string
+  default     = ""
+  description = "Stage Databricks Access Connector resource ID — added to the ADLS firewall so serverless compute can access storage"
+}
+
+variable "access_connector_id_prod" {
+  type        = string
+  default     = ""
+  description = "Prod Databricks Access Connector resource ID — added to the ADLS firewall so serverless compute can access storage"
+}
+
+
 # Locals are computed values derived from variables. Unlike variables, you can't
 # pass them in — they're calculated here and used throughout the config.
 locals {

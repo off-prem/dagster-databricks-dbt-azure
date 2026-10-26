@@ -127,7 +127,13 @@ dbt env *ARGS:
     else
       echo "env must be 'stage' or 'prod'" >&2; exit 1
     fi
-    cd dbt && dbt {{ ARGS }}
+    if [ -z "${DBX_SP_SECRET:-}" ]; then
+      export DBX_SP_SECRET="$(az keyvault secret show \
+        --vault-name "${KV_NAME}" \
+        --name "dbx-{{ env }}-sp-secret" \
+        --query value -o tsv)"
+    fi
+    cd dbt && ../dagster/.venv/bin/dbt {{ ARGS }}
 
 # ── Dagster ──────────────────────────────────────────────────────────────────
 

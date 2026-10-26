@@ -13,6 +13,7 @@ dependencies = [
     "dagster-dbt~=0.29.26",
     "dbt-databricks>=1.9,<2",
     "dagster-dg>=0.2.2",
+    "dagster-components>=0.2.2",
     "dagster-postgres~=0.29.26",
     "dagster-k8s~=0.29.26",
     # dagster-postgres uses bare postgresql:// URLs (no +psycopg2 driver suffix).
