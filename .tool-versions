@@ -3,6 +3,7 @@
 terraform 1.17.0
 helm 3.22.1
 kubectl 1.36.5
+kubelogin 0.2.22
 azure-cli 2.91.0
 databricks-cli 1.22.1
 uv 0.11.14

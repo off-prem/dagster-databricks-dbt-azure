@@ -57,9 +57,10 @@ scripts/verify.sh 0                        # verify phase 0 is complete (0-5)
 
 ## Current state
 <!-- Update after every phase. A fresh session reads this first. -->
-- Phase: 0 (complete); Terraform written through Phase 4
-- Steps with ✅ in `docs/guide.md`: 0.1–0.9
-- Next step: 1.1 (apply shared infrastructure — costs begin)
+- Phase: 1 (complete); Terraform written through Phase 4
+- Steps with ✅ in `docs/guide.md`: 0.1–0.9, 1.1–1.4
+- Next step: 2.1 (apply stage environment)
 - Known blockers: none
-- Values collected so far: none committed; per-user values are in the git-ignored `.env` (run `scripts/setup-env.sh`)
+- Values collected: ACR_NAME, PG_FQDN, KV_NAME, STORAGE_ACCOUNT_NAME, AKS_EGRESS_IP in `.env`
+- Note: Postgres runs in centralus (B-series unavailable in eastus2); AKS uses D2as_v6 (B-series VMs unavailable)
 - CI workflows (Phase 5): deploy-stage.yml and promote-prod.yml are still skeletons with TODO comments

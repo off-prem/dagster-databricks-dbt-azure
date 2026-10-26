@@ -74,6 +74,17 @@ install_kubectl() {
   install -m 0755 "${TMP}/kubectl" "${BIN}/kubectl"
 }
 
+install_kubelogin() {
+  local v; v="$(ver kubelogin)"
+  if have kubelogin "v${v}" kubelogin --version; then echo "kubelogin ${v} ok"; return; fi
+  echo "Installing kubelogin ${v}"
+  local zip="kubelogin-${OS}-${ARCH}.zip"
+  local base="https://github.com/Azure/kubelogin/releases/download/v${v}"
+  curl -fsSL -o "${TMP}/${zip}" "${base}/${zip}"
+  python3 -m zipfile -e "${TMP}/${zip}" "${TMP}/kubelogin"
+  install -m 0755 "${TMP}/kubelogin/bin/${OS}_${ARCH}/kubelogin" "${BIN}/kubelogin"
+}
+
 install_databricks() {
   local v; v="$(ver databricks-cli)"
   if have databricks "${v}" databricks --version; then echo "databricks ${v} ok"; return; fi
@@ -201,6 +212,7 @@ install_python
 install_terraform
 install_helm
 install_kubectl
+install_kubelogin
 install_databricks
 install_azure_cli
 install_jq

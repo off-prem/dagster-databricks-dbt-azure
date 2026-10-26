@@ -237,9 +237,8 @@ You should see `shared.tfstate`, `stage.tfstate`, and `prod.tfstate`.
 just verify 0
 ```
 
-The verify script now includes code project checks — it runs `dbt parse` and
-`dagster definitions validate` with dummy env vars (no infrastructure needed). Both
-must pass before moving on.
+The verify script checks code projects (`dbt parse`, `dagster definitions validate`).
+Both must pass before moving on.
 
 **Preview the asset graph** — `dagster dev` requires a reachable Databricks host (the dbt
 adapter validates credentials at startup), so it won't work with dummy values. You'll see
@@ -252,7 +251,36 @@ the full lineage graph in Phase 2 after `just port-forward stage`.
 This is where costs begin. See [costs](costs.md) for the full breakdown and
 [stop/start](concepts/stop-start.md) for halting resources when idle.
 
-### 1.1 Apply shared infrastructure
+> **Session expired?** Azure CLI tokens expire quickly on new accounts (security defaults).
+> If any command fails with `AADSTS530035`, re-authenticate:
+> ```bash
+> source scripts/load-env.sh
+> az logout
+> az login --tenant "$TF_VAR_tenant_id" --scope "https://management.azure.com/.default"
+> ```
+
+> **SKU not available?** Azure restricts which VM sizes are available per subscription
+> and region. Free-trial subscriptions are especially limited — consider upgrading to
+> Pay-As-You-Go (keeps your remaining credit). If Postgres B-series SKUs aren't available
+> in your region, set `pg_location` to a region where they are (e.g. `centralus`). If AKS
+> B-series VMs aren't available, set `aks_vm_size` to a D-series alternative (e.g.
+> `Standard_D2as_v6`). These variables are in `infra/shared/variables.tf`.
+
+### 1.1 Pre-flight check ✅
+
+Before spending money, verify that the AKS VM size and Postgres SKU you'll
+use are actually available on your subscription. `terraform plan` does not
+catch SKU restrictions — you'd only find out after a multi-minute apply fails.
+
+```bash
+just verify 1    # the SKU pre-flight section runs first
+```
+
+If either SKU fails, the output tells you what to set in `.env` (e.g.
+`TF_VAR_aks_vm_size`, `TF_VAR_pg_location`, `TF_VAR_pg_sku_name`).
+See the "SKU not available?" callout above for details.
+
+### 1.2 Apply shared infrastructure ✅
 
 ```bash
 just tf-init shared -upgrade   # pick up new providers (time)
@@ -267,7 +295,7 @@ just tf-apply shared           # create (~10-15 min)
 | [VNet](resources/vnet.md) + subnets + NSG | 0 | Network layout |
 | [ACR](resources/acr.md) (Basic) | ~5 | Docker image store |
 | [Key Vault](resources/key-vault.md) | <1 | Secrets store |
-| [Postgres](resources/postgres.md) (B1ms) | ~17 running, ~4 stopped | Dagster state |
+| [Postgres](resources/postgres.md) (B2s) | ~25 running, ~6 stopped | Dagster state |
 | [ADLS Gen2](resources/adls.md) | ~2 | Data lake storage |
 | [AKS](resources/aks.md) (1× B2ms) | ~60 running, ~25 stopped | Kubernetes cluster |
 
@@ -287,7 +315,7 @@ az resource list -g rg-dagster-shared -o table
 just show-env | grep -E 'ACR_NAME|PG_FQDN|KV_NAME|STORAGE_ACCOUNT|AKS_EGRESS'
 ```
 
-### 1.2 Verify connectivity
+### 1.3 Verify connectivity ✅
 
 ```bash
 az aks get-credentials --resource-group rg-dagster-shared --name aks-dagster
@@ -303,7 +331,7 @@ az keyvault secret show \
   --name pg-admin-password --query value -o tsv
 ```
 
-### 1.3 Test stop/start
+### 1.4 Test stop/start ✅
 
 ```bash
 just stop          # stops AKS + Postgres (~2-3 min)

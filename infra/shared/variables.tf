@@ -39,6 +39,30 @@ variable "owner" {
   description = "Owner name for resource tags"
 }
 
+variable "aks_vm_size" {
+  type        = string
+  default     = "Standard_D2as_v6"
+  description = "AKS node VM size"
+}
+
+variable "pg_location" {
+  type        = string
+  default     = "centralus"
+  description = "Region for Postgres (B-series often unavailable in eastus2 — centralus is a reliable fallback)"
+}
+
+variable "pg_sku_name" {
+  type        = string
+  default     = "B_Standard_B2s"
+  description = "Postgres Flexible Server SKU"
+}
+
+variable "pg_version" {
+  type        = string
+  default     = "16"
+  description = "Postgres major version"
+}
+
 # Locals are computed values derived from variables. Unlike variables, you can't
 # pass them in — they're calculated here and used throughout the config.
 locals {
