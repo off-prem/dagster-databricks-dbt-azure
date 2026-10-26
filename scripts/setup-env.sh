@@ -174,6 +174,7 @@ collect_tf() {
         "databricks_sp_client_id:DBX_STAGE_SP_CLIENT_ID" \
         "sql_warehouse_http_path:DBX_STAGE_WAREHOUSE_HTTP_PATH" \
         "dagster_identity_client_id:DAGSTER_STAGE_IDENTITY_CLIENT_ID" \
+        "access_connector_id:TF_VAR_access_connector_id_stage" \
       ; do
         local tf_key="${pair%%:*}" env_key="${pair##*:}"
         val="$(tf_out "${tf_key}")"
@@ -187,6 +188,7 @@ collect_tf() {
         "databricks_sp_client_id:DBX_PROD_SP_CLIENT_ID" \
         "sql_warehouse_http_path:DBX_PROD_WAREHOUSE_HTTP_PATH" \
         "dagster_identity_client_id:DAGSTER_PROD_IDENTITY_CLIENT_ID" \
+        "access_connector_id:TF_VAR_access_connector_id_prod" \
       ; do
         local tf_key="${pair%%:*}" env_key="${pair##*:}"
         val="$(tf_out "${tf_key}")"

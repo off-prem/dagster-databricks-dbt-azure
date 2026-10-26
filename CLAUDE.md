@@ -57,9 +57,9 @@ scripts/verify.sh 0                        # verify phase 0 is complete (0-5)
 
 ## Current state
 <!-- Update after every phase. A fresh session reads this first. -->
-- Phase: 2 (in progress — Helm deployed, smoke test pending)
-- Steps with ✅ in `docs/guide.md`: 0.1–0.9, 1.1–1.4, 2.1–2.10
-- Next step: rebuild image (dagster-k8s + dagster-postgres added), redeploy, then 2.11 smoke test
+- Phase: 3 (complete)
+- Steps with ✅ in `docs/guide.md`: 0.1–0.9, 1.1–1.4, 2.1–2.11, 3.1–3.3
+- Next step: 4.1 apply prod environment
 - Known blockers: none
 - Values collected: ACR_NAME, PG_FQDN, KV_NAME, STORAGE_ACCOUNT_NAME, AKS_EGRESS_IP in `.env`
 - Note: Postgres runs in centralus (B-series unavailable in eastus2); AKS uses D2as_v6 (B-series VMs unavailable)

@@ -401,12 +401,23 @@ resource "azurerm_storage_account" "this" {
   shared_access_key_enabled       = false    # RBAC only, no shared keys
   default_to_oauth_authentication = true
 
-  # Firewall: deny all except your IP and Azure services (so Databricks can
-  # access via the Access Connector — see env/main.tf).
+  # Firewall: deny all except your IP, Azure services, and Databricks access
+  # connectors. Serverless compute (SQL warehouses, serverless jobs) runs on
+  # Databricks-managed infra, so "AzureServices" bypass alone is not enough —
+  # each access connector needs an explicit resource access rule.
   network_rules {
     default_action = "Deny"
     bypass         = ["AzureServices"]
     ip_rules       = [local.my_ip]
+
+    dynamic "private_link_access" {
+      for_each = compact([
+        var.access_connector_id_stage, var.access_connector_id_prod,
+      ])
+      content {
+        endpoint_resource_id = private_link_access.value
+      }
+    }
   }
 
   tags = local.tags
@@ -424,6 +435,39 @@ resource "azurerm_role_assignment" "storage_blob_contributor" {
 resource "azurerm_storage_container" "metastore" {
   name               = "metastore"
   storage_account_id = azurerm_storage_account.this.id
+}
+
+# ── Network Security Perimeter (serverless SQL warehouse → ADLS) ────────────
+# Serverless compute runs on Databricks-managed infrastructure outside the
+# customer subscription. The storage account's firewall (defaultAction: Deny)
+# blocks it — resource access rules alone are not enough. An NSP with the
+# AzureDatabricksServerless service tag is the Azure-recommended solution.
+# Transition mode keeps existing firewall rules working alongside the NSP.
+
+resource "azurerm_network_security_perimeter" "this" {
+  name                = "nsp-${var.project}"
+  resource_group_name = azurerm_resource_group.shared.name
+  location            = azurerm_resource_group.shared.location
+  tags                = local.tags
+}
+
+resource "azurerm_network_security_perimeter_profile" "this" {
+  name                          = "profile-${var.project}"
+  network_security_perimeter_id = azurerm_network_security_perimeter.this.id
+}
+
+resource "azurerm_network_security_perimeter_access_rule" "dbx_serverless" {
+  name                                   = "allow-databricks-serverless"
+  network_security_perimeter_profile_id  = azurerm_network_security_perimeter_profile.this.id
+  direction                              = "Inbound"
+  service_tags                           = ["AzureDatabricksServerless"]
+}
+
+resource "azurerm_network_security_perimeter_association" "storage" {
+  name                                   = "assoc-${var.project}-storage"
+  network_security_perimeter_profile_id  = azurerm_network_security_perimeter_profile.this.id
+  resource_id                            = azurerm_storage_account.this.id
+  access_mode                            = "Learning"
 }
 
 resource "azurerm_storage_container" "bronze" {
