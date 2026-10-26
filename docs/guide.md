@@ -753,6 +753,11 @@ All workflows authenticate via OIDC (`azure/login@v2`) using GitHub repository v
 Scripts get a stub `.env` (`touch .env`) so `load-env.sh` doesn't fail when vars come from
 the CI environment.
 
+**Pushing workflow files** requires the `workflow` scope on your GitHub token. If `git push`
+is rejected with "refusing to allow an OAuth App to create or update workflow," either push
+via SSH (`git remote set-url origin git@github.com:<org>/<repo>.git`) or refresh your token
+with `gh auth refresh -s workflow --web=false`.
+
 ### 5.4 First prod promotion
 
 Push a trivial PR. After merge: `deploy-stage` runs automatically → `promote-prod` waits
