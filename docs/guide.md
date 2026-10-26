@@ -353,7 +353,7 @@ just verify 1
 
 ## Phase 2 — Stage environment (Goal 1: Dagster talks to Databricks)
 
-### 2.1 Apply stage
+### 2.1 Apply stage ✅
 
 ```bash
 just tf-init env-stage -upgrade   # pick up new providers (azuread, databricks, time)
@@ -381,7 +381,7 @@ az databricks workspace show -g rg-dagster-stage -n dbw-dagster-stage --query na
 just show-env | grep DBX_STAGE
 ```
 
-### 2.2 First login to the Databricks workspace
+### 2.2 First login to the Databricks workspace ✅
 
 1. `just show-env` → find `DBX_STAGE_HOST` (the workspace URL)
 2. Open it in a browser, log in with your Azure credentials
@@ -389,9 +389,24 @@ just show-env | grep DBX_STAGE
 4. If workspace ID wasn't captured: `just set-env DBX_STAGE_WORKSPACE_ID <id>`
    (the number after `?o=` in the workspace URL)
 
-### 2.3 Create the Unity Catalog metastore
+### 2.3 Create the Unity Catalog metastore ✅
 
 One-time manual step — see [Unity Catalog](concepts/unity-catalog.md) for what this is.
+
+> **Personal email accounts (Gmail, Outlook.com, etc.):** The Databricks account
+> console at accounts.azuredatabricks.net does not accept personal Microsoft accounts.
+> If you created your Azure free account with a personal email, you'll get:
+> *"User account is a personal Microsoft account. Personal Microsoft accounts are not
+> supported for this application."*
+>
+> **Fix:** Create a native organizational user in your Entra tenant:
+> 1. Azure Portal → **Microsoft Entra ID** → **Users** → **New user** → **Create new user**
+> 2. UPN: `admin@<your-tenant>.onmicrosoft.com` (find your tenant name with
+>    `az ad signed-in-user show --query userPrincipalName -o tsv` — the part after `@`)
+> 3. Assign the new user the **Global Administrator** Entra role and **Owner** on your subscription
+> 4. Sign into the account console in an incognito window with the new user
+>
+> Corporate/organizational Azure accounts don't hit this — skip straight to step 1.
 
 1. Go to [accounts.azuredatabricks.net](https://accounts.azuredatabricks.net)
 2. **Catalog** → **Create metastore**
@@ -404,7 +419,7 @@ One-time manual step — see [Unity Catalog](concepts/unity-catalog.md) for what
 4. **Assign** the metastore to the stage workspace
 5. `just set-env TF_VAR_metastore_id <metastore-id>`
 
-### 2.4 Create workspace objects
+### 2.4 Create workspace objects ✅
 
 Now that the metastore is assigned, re-apply to create all Databricks objects:
 
@@ -429,30 +444,29 @@ az keyvault secret list \
 # Should include: dbx-stage-sp-client-id, dbx-stage-sp-secret, pg-admin-password
 ```
 
-### 2.5 Apply the SecretProviderClass
+### 2.5 Apply the SecretProviderClass ✅
 
 The SecretProviderClass tells the CSI Secrets Store driver which Key Vault secrets
 to sync into K8s Secrets for the Dagster pods.
 
-1. Edit `deploy/k8s/stage/secretproviderclass.yaml` — replace the three placeholders
-   with values from `just show-env`:
-   - `<KV_NAME>` → KV_NAME
-   - `<TF_VAR_tenant_id>` → TF_VAR_tenant_id
-   - `<DAGSTER_STAGE_IDENTITY_CLIENT_ID>` → DAGSTER_STAGE_IDENTITY_CLIENT_ID
+The template uses `${VAR}` placeholders filled from `.env` at deploy time (no
+account-specific values are committed). **You must use `envsubst`** — applying the
+raw template leaves Key Vault name, tenant ID, and client ID blank, and the CSI
+driver will fail with `keyvaultName is not provided`.
 
-2. Create the namespace (Helm will also create it, but we need it now):
+```bash
+kubectl create namespace dagster-stage --dry-run=client -o yaml | kubectl apply -f -
+source scripts/load-env.sh && envsubst < deploy/k8s/stage/secretproviderclass.yaml | kubectl apply -f -
+```
 
-   ```bash
-   kubectl create namespace dagster-stage --dry-run=client -o yaml | kubectl apply -f -
-   ```
+Verify the values were resolved:
 
-3. Apply:
+```bash
+kubectl get secretproviderclass dagster-secrets -n dagster-stage -o yaml | grep keyvaultName
+# Should show your actual Key Vault name, not an empty string
+```
 
-   ```bash
-   kubectl apply -f deploy/k8s/stage/secretproviderclass.yaml
-   ```
-
-### 2.6 Store dummy API key in Key Vault
+### 2.6 Store dummy API key in Key Vault ✅
 
 The `posts` source in `databricks/sources.yml` points to a public API that doesn't need
 a key, but we store a dummy value anyway to test the full Key Vault → pod env → Pipes
@@ -471,7 +485,7 @@ The extract asset reads it from the pod env and forwards it to Databricks via Pi
 The entrypoint adds it as an `X-Api-Key` header — jsonplaceholder ignores the header, so
 the extract still succeeds.
 
-### 2.7 Authenticate the Databricks CLI
+### 2.7 Authenticate the Databricks CLI ✅
 
 The bundle deploy and `databricks workspace ls` commands need CLI auth. The
 Databricks CLI picks up your Azure identity from `az login` when you set the host:
@@ -483,7 +497,7 @@ databricks auth login --host "${DATABRICKS_HOST}"
 
 Verify: `databricks workspace ls /` should list workspace root contents.
 
-### 2.8 Deploy the Databricks bundle
+### 2.8 Deploy the Databricks bundle ✅
 
 ```bash
 just bundle-validate stage    # check config
@@ -500,16 +514,32 @@ Verify the files are in the workspace:
 databricks workspace ls /Workspace/.bundle/dagster/stage/files/src/extract
 ```
 
-### 2.9 Build and push the Dagster image
+### 2.9 Build and push the Dagster image ✅
+
+**Test locally first** (if Docker Desktop is available) to catch build errors without
+waiting for an ACR round-trip (~3 min):
+
+```bash
+docker build -f dagster/Dockerfile -t poc:local .
+docker run --rm poc:local python -c "import poc.definitions; print('OK')"
+```
+
+If no local Docker, skip straight to the ACR build — errors will show in the build log.
 
 ```bash
 az acr build \
   --registry "$(just show-env | grep ACR_NAME | cut -d= -f2 | tr -d '"')" \
   --image poc:latest \
-  dagster/
+  -f dagster/Dockerfile .
 ```
 
 Builds the Docker image in the cloud via [ACR](resources/acr.md) — no local Docker needed.
+
+> **dbt manifest:** The Dockerfile does **not** run `dbt parse` at build time because
+> `dbt-databricks` tries to authenticate even during parse, causing hangs with
+> placeholder credentials. Instead, the image sets `DAGSTER_DBT_PARSE_PROJECT_ON_LOAD=1`
+> so the manifest is generated at pod startup using real credentials from the pod env.
+> Phase 5 CI will pre-build the manifest with real credentials and remove this.
 
 Verify the image was pushed:
 
@@ -519,21 +549,23 @@ az acr repository show-tags \
   --repository poc -o tsv
 ```
 
-### 2.10 Deploy Dagster via Helm
+### 2.10 Deploy Dagster via Helm ✅
 
 ```bash
 just helm-upgrade stage
 ```
 
-Deploys Dagster into `dagster-stage`. The Helm values inject `DBX_BUNDLE_ROOT`
-(computed from project name + env) and `DATABRICKS_HOST` into the pod. See
-[Helm deployments](concepts/helm-deployments.md) for how values are layered.
+Deploys Dagster into `dagster-stage`. The script resolves `${VAR}` placeholders
+in `deploy/helm/values.stage.yaml` via `envsubst` (per-user values from `.env`)
+and passes the result to Helm. See [Helm deployments](concepts/helm-deployments.md)
+for how values are layered.
 
 Verify pods are running:
 
 ```bash
 kubectl get pods -n dagster-stage    # all pods should be Running/Ready
 ```
+
 
 ### 2.11 Smoke test
 
@@ -721,7 +753,24 @@ git commit -m "ci: activate deploy and promote workflows"
 Push a trivial PR. After merge: `deploy-stage` runs automatically → `promote-prod` waits
 for your approval in GitHub → Actions → **Review deployments** → **Approve and deploy**.
 
-### 5.5 Harden
+### 5.5 Pre-build dbt manifest in CI
+
+The Dockerfile currently sets `DAGSTER_DBT_PARSE_PROJECT_ON_LOAD=1`, so every pod
+(code server **and** each run pod) runs `dbt parse` at startup (~10 s). This is
+the biggest avoidable contributor to run startup latency.
+
+Fix: add a CI step that runs `dbt parse` with real credentials and bakes the
+resulting `dbt/target/manifest.json` into the image. Then remove the env var.
+
+```dockerfile
+# In CI only — requires DATABRICKS_HOST, DBX_SP_CLIENT_ID, etc.
+RUN cd /app/dbt && dbt parse --profiles-dir /app/dbt
+```
+
+After this, run pods start in ~15–20 s (pod scheduling + image layer check)
+instead of ~30+ s.
+
+### 5.6 Harden
 
 - Restrict the Entra app's RBAC to just the three resource groups + ACR + AKS
 - Copy `.github/CODEOWNERS.example` to `.github/CODEOWNERS`

@@ -33,7 +33,7 @@ dagsterWebserver:
   service:
     type: ClusterIP
   resources:
-    requests: { cpu: 250m, memory: 512Mi }
+    requests: { cpu: 100m, memory: 512Mi }
     limits:   { memory: 512Mi }
 
 # ── Dagster daemon (the scheduler) ──────────────────────────────────────────
@@ -41,19 +41,23 @@ dagsterWebserver:
 # triggers, and run queue entries. It needs modest resources.
 dagsterDaemon:
   resources:
-    requests: { cpu: 250m, memory: 512Mi }
+    requests: { cpu: 100m, memory: 512Mi }
     limits:   { memory: 512Mi }
 
 # ── Run launcher ─────────────────────────────────────────────────────────────
 # K8sRunLauncher means each Dagster run gets its own K8s Job (a short-lived
-# pod). This isolates runs from each other and from the daemon. The resource
-# limits here apply to each run pod.
+# pod). This isolates runs from each other and from the daemon.
+#
+# IMPORTANT: run pods do NOT inherit env vars, volumes, labels, or secrets
+# from the user code deployment. Those must be configured separately here
+# and in per-env values files. Only the image is inherited automatically.
 runLauncher:
   type: K8sRunLauncher
   config:
     k8sRunLauncher:
+      imagePullPolicy: Always
       resources:
-        requests: { cpu: 500m, memory: 1Gi }
+        requests: { cpu: 100m, memory: 1Gi }
         limits:   { memory: 1Gi }
 
 # ── Service account ──────────────────────────────────────────────────────────
@@ -67,39 +71,9 @@ serviceAccount:
   annotations: {}
 
 # ── User deployments (your pipeline code) ────────────────────────────────────
-# This section defines where your Dagster code lives. The "poc" deployment
-# loads your Python module (poc.definitions) which contains all asset
-# definitions, resources, and schedules.
+# Only `enabled` is set here. The full deployment spec (image, port, env,
+# volumes, etc.) lives in each per-env values file (values.stage.yaml /
+# values.prod.yaml) because Helm replaces arrays rather than merging them,
+# so splitting the deployment across files loses fields.
 dagster-user-deployments:
   enabled: true
-  deployments:
-    - name: poc
-      image:
-        repository: ""   # overridden: ${ACR_LOGIN_SERVER}/poc
-        tag: latest
-        pullPolicy: IfNotPresent
-      # dagsterApiGrpcArgs tells Dagster which Python module contains your
-      # definitions. "-m poc.definitions" means `from poc.definitions import defs`.
-      dagsterApiGrpcArgs: ["-m", "poc.definitions"]
-      port: 3030
-      resources:
-        requests: { cpu: 250m, memory: 512Mi }
-        limits:   { memory: 512Mi }
-      # ── CSI Secrets Store volume ──────────────────────────────────────────
-      # This mounts the SecretProviderClass (defined in deploy/k8s/) as a
-      # volume inside the pod. When the volume is mounted, the CSI driver
-      # reads secrets from Key Vault and creates K8s Secrets (dagster-dbx-*
-      # and dagster-postgres) that other parts of the chart reference.
-      # The mount path (/mnt/secrets-store) contains the raw secret files,
-      # but pods typically read them via env vars from the synced K8s Secrets.
-      volumes:
-        - name: secrets-store
-          csi:
-            driver: secrets-store.csi.k8s.io
-            readOnly: true
-            volumeAttributes:
-              secretProviderClass: dagster-secrets
-      volumeMounts:
-        - name: secrets-store
-          mountPath: /mnt/secrets-store
-          readOnly: true

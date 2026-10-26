@@ -54,16 +54,6 @@ data "azurerm_storage_account" "shared" {
   resource_group_name = local.shared_rg
 }
 
-# Look up the AKS egress IP — the public IP that all outbound traffic from
-# K8s pods appears to come from. Needed for Databricks IP access lists.
-locals {
-  aks_egress_pip_id = tolist(data.azurerm_kubernetes_cluster.this.network_profile[0].load_balancer_profile[0].effective_outbound_ips)[0]
-}
-
-data "azurerm_public_ip" "aks_egress" {
-  name                = reverse(split("/", local.aks_egress_pip_id))[0]
-  resource_group_name = data.azurerm_kubernetes_cluster.this.node_resource_group
-}
 
 # ── Resource group ────────────────────────────────────────────────────────────
 # Each environment gets its own resource group, separate from the shared one.

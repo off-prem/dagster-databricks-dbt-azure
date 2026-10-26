@@ -1,50 +1,102 @@
 # ┌─────────────────────────────────────────────────────────────────────────────┐
-# │ Stage environment overrides                                               │
-# │                                                                           │
-# │ This file layers on top of values.base.yaml for the stage environment.    │
-# │ The diff between this and values.prod.yaml should be trivial — only       │
-# │ env-specific names (database name, catalog name, secret names).           │
-# │                                                                           │
-# │ Per-user values are overridden by scripts/helm-upgrade.sh from .env.      │
+# │ Stage environment values                                                    │
+# │                                                                             │
+# │ This file layers on top of values.base.yaml for the stage environment.      │
+# │ It is processed by envsubst in scripts/helm-upgrade.sh, which resolves      │
+# │ ${VAR} placeholders from .env before passing it to Helm.                    │
+# │                                                                             │
+# │ The deployment spec must be COMPLETE here (image, port, volumes, etc.)      │
+# │ because Helm replaces arrays rather than merging them — fields defined      │
+# │ only in values.base.yaml would be lost.                                     │
+# │                                                                             │
+# │ The diff between this and values.prod.yaml should be trivial — only         │
+# │ env-specific names (database name, catalog name, secret names).             │
 # └─────────────────────────────────────────────────────────────────────────────┘
 
 global:
-  # The name of the K8s Secret containing the Postgres password. This Secret
-  # is created automatically by the CSI Secrets Store driver (see the
-  # SecretProviderClass in deploy/k8s/stage/). The Dagster chart reads the
-  # "postgresql-password" key from this Secret to build the connection string.
   postgresqlSecretName: dagster-postgres
 
 postgresql:
-  postgresqlHost: ""        # overridden: ${PG_FQDN}
-  postgresqlDatabase: dagster_stage     # matches the DB created in shared/main.tf
-  postgresqlUsername: pgadmin           # the Postgres admin user
+  postgresqlHost: "${PG_FQDN}"
+  postgresqlDatabase: dagster_stage
+  postgresqlUsername: pgadmin
   postgresqlParams:
-    sslmode: require        # Azure Postgres requires TLS connections
+    sslmode: require
 
-dagster-user-deployments:
-  deployments:
-    - name: poc
-      # This pod label tells AKS to inject a workload identity token for the
-      # service account. Without it, the CSI Secrets Store driver can't
-      # authenticate to Key Vault.
+serviceAccount:
+  name: "${RELEASE}"
+  annotations:
+    azure.workload.identity/client-id: "${IDENTITY_CLIENT_ID}"
+
+runLauncher:
+  config:
+    k8sRunLauncher:
+      envVars:
+        - "DAGSTER_ENV=stage"
+        - "DBX_CATALOG=stage"
+        - "DATABRICKS_HOST=${DBX_HOST}"
+        - "DBX_BUNDLE_ROOT=${DBX_BUNDLE_ROOT}"
+        - "DBX_WAREHOUSE_HTTP_PATH=${DBX_WAREHOUSE}"
+        - "DBT_PROFILES_DIR=/app/dbt"
+      envSecrets:
+        - name: dagster-dbx-stage
       labels:
         azure.workload.identity/use: "true"
-      # Environment variables available to your Dagster code at runtime.
-      # Some have placeholder values that helm-upgrade.sh fills from .env.
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: dagster-secrets
+      volumeMounts:
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true
+
+dagster-user-deployments:
+  serviceAccount:
+    create: false
+    name: "${RELEASE}"
+  deployments:
+    - name: poc
+      image:
+        repository: "${ACR_LOGIN_SERVER}/poc"
+        tag: latest
+        pullPolicy: Always
+      dagsterApiGrpcArgs: ["-m", "poc.definitions"]
+      port: 3030
+      labels:
+        azure.workload.identity/use: "true"
       env:
         - name: DAGSTER_ENV
           value: stage
         - name: DBX_CATALOG
-          value: stage                # Unity Catalog catalog name
+          value: stage
         - name: DATABRICKS_HOST
-          value: ""         # overridden: ${DBX_STAGE_HOST}
+          value: "${DBX_HOST}"
         - name: DBX_BUNDLE_ROOT
-          value: ""         # overridden: /Workspace/.bundle/dagster/stage/files
+          value: "${DBX_BUNDLE_ROOT}"
         - name: DBX_WAREHOUSE_HTTP_PATH
-          value: ""         # overridden: ${DBX_STAGE_WAREHOUSE_HTTP_PATH}
-      # envSecrets maps K8s Secret keys to pod env vars. The dagster-dbx-stage
-      # Secret (synced from Key Vault by the SecretProviderClass) contains
-      # DBX_SP_CLIENT_ID, DBX_SP_SECRET, and SOURCE_POSTS_API_KEY.
+          value: "${DBX_WAREHOUSE}"
+        - name: DBT_PROFILES_DIR
+          value: /app/dbt
       envSecrets:
         - name: dagster-dbx-stage
+      resources:
+        requests:
+          cpu: 100m
+          memory: 2Gi
+        limits:
+          memory: 2Gi
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: dagster-secrets
+      volumeMounts:
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true

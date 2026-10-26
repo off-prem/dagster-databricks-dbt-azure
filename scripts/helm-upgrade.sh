@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Deploy Dagster to AKS via Helm, injecting per-user values from .env.
-# Usage: scripts/helm-upgrade.sh <stage|prod> [--set key=val ...]
+# Usage: scripts/helm-upgrade.sh <stage|prod> [extra helm flags ...]
 #
-# Reads .env (via load-env.sh) and overrides the per-user placeholders in the committed
-# values files. Extra --set flags (e.g. image.tag from CI) are appended.
+# Reads .env (via load-env.sh) and resolves ${VAR} placeholders in the
+# per-env values file with envsubst before passing it to Helm.
+# Extra flags (e.g. --set image.tag=sha-abc from CI) are appended.
 set -euo pipefail
 
-ENV="${1:?Usage: scripts/helm-upgrade.sh <stage|prod> [--set key=val ...]}"
+ENV="${1:?Usage: scripts/helm-upgrade.sh <stage|prod> [extra helm flags ...]}"
 shift
 case "${ENV}" in
   stage|prod) ;;
@@ -20,7 +21,7 @@ PROJECT="${TF_VAR_project:-dagster}"
 NAMESPACE="${PROJECT}-${ENV}"
 RELEASE="${PROJECT}-${ENV}"
 
-# Map env-specific .env keys
+# Map env-specific .env keys to generic names used in values templates
 if [ "${ENV}" = stage ]; then
   DBX_HOST="${DBX_STAGE_HOST:-}"
   DBX_WAREHOUSE="${DBX_STAGE_WAREHOUSE_HTTP_PATH:-}"
@@ -30,6 +31,7 @@ else
   DBX_WAREHOUSE="${DBX_PROD_WAREHOUSE_HTTP_PATH:-}"
   IDENTITY_CLIENT_ID="${DAGSTER_PROD_IDENTITY_CLIENT_ID:-}"
 fi
+DBX_BUNDLE_ROOT="/Workspace/.bundle/${PROJECT}/${ENV}/files"
 
 # Warn on missing values (not fatal — partial deploys are useful during setup)
 for var in PG_FQDN ACR_LOGIN_SERVER DBX_HOST; do
@@ -37,19 +39,16 @@ for var in PG_FQDN ACR_LOGIN_SERVER DBX_HOST; do
   [ -n "${val}" ] || echo "WARNING: ${var} is blank in .env — helm values will be incomplete" >&2
 done
 
+# Resolve ${VAR} placeholders in the per-env values file
+export PG_FQDN ACR_LOGIN_SERVER DBX_HOST DBX_WAREHOUSE DBX_BUNDLE_ROOT RELEASE IDENTITY_CLIENT_ID
+RESOLVED="$(mktemp)"
+trap 'rm -f "${RESOLVED}"' EXIT
+envsubst < "${ROOT}/deploy/helm/values.${ENV}.yaml" > "${RESOLVED}"
+
 set -x
 helm upgrade --install "${RELEASE}" dagster/dagster \
+  --version 1.13.26 \
   -n "${NAMESPACE}" --create-namespace \
   -f "${ROOT}/deploy/helm/values.base.yaml" \
-  -f "${ROOT}/deploy/helm/values.${ENV}.yaml" \
-  --set "postgresql.postgresqlHost=${PG_FQDN:-}" \
-  --set "dagster-user-deployments.deployments[0].image.repository=${ACR_LOGIN_SERVER:-}/poc" \
-  --set "serviceAccount.name=${RELEASE}" \
-  --set "serviceAccount.annotations.azure\.workload\.identity/client-id=${IDENTITY_CLIENT_ID}" \
-  --set "dagster-user-deployments.deployments[0].env[2].name=DATABRICKS_HOST" \
-  --set "dagster-user-deployments.deployments[0].env[2].value=${DBX_HOST}" \
-  --set "dagster-user-deployments.deployments[0].env[3].name=DBX_BUNDLE_ROOT" \
-  --set "dagster-user-deployments.deployments[0].env[3].value=/Workspace/.bundle/${PROJECT}/${ENV}/files" \
-  --set "dagster-user-deployments.deployments[0].env[4].name=DBX_WAREHOUSE_HTTP_PATH" \
-  --set "dagster-user-deployments.deployments[0].env[4].value=${DBX_WAREHOUSE}" \
+  -f "${RESOLVED}" \
   "$@"

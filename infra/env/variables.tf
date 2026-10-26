@@ -60,6 +60,11 @@ variable "owner" {
   description = "Owner name for resource tags"
 }
 
+variable "aks_egress_ip" {
+  type        = string
+  description = "AKS cluster outbound public IP (from shared stack output)"
+}
+
 # Set AFTER step 2.3 (manual metastore assignment). When empty, all Databricks
 # resources are skipped (count = 0) so Phase 2.1 can create only Azure resources.
 # The guide walks you through setting this.

@@ -9,12 +9,11 @@ How Dagster gets deployed to [AKS](../resources/aks.md) and what happens when yo
 just helm-upgrade stage
   → scripts/helm-upgrade.sh stage
     → reads .env for per-user values (Postgres host, Databricks host, image repo, etc.)
+    → envsubst resolves ${VAR} placeholders in values.stage.yaml → temp file
     → helm upgrade --install dagster-stage dagster/dagster \
         -n dagster-stage \
         -f deploy/helm/values.base.yaml \
-        -f deploy/helm/values.stage.yaml \
-        --set <per-user overrides from .env> \
-        --wait
+        -f <resolved temp file>
 ```
 
 ### What the flags mean
@@ -24,9 +23,7 @@ just helm-upgrade stage
 | `--install` | Create the release if it doesn't exist; update if it does |
 | `-n dagster-stage` | Target Kubernetes namespace |
 | `-f values.base.yaml` | Shared settings (resource limits, Postgres config, etc.) |
-| `-f values.stage.yaml` | Environment-specific settings (catalog, DB name, secret names) |
-| `--set` | Per-user values from `.env` that aren't in the committed YAML |
-| `--wait` | Block until all pods are running |
+| `-f <resolved>` | Per-env file after envsubst replaces `${VAR}` with `.env` values |
 
 ### Values layering
 
@@ -34,14 +31,15 @@ just helm-upgrade stage
 
 1. **Chart defaults** — from the Dagster Helm chart
 2. **`values.base.yaml`** — our shared overrides (external Postgres, resource limits,
-   K8sRunLauncher, service account, etc.)
-3. **`values.<env>.yaml`** — environment-specific (env name, catalog, DB name). Per-user
-   fields are left blank.
-4. **`--set` flags** — per-user values from `.env` (Postgres host, Databricks host, image
-   repository/tag)
+   K8sRunLauncher, service account, etc.). Does **not** include the `deployments` array.
+3. **`values.<env>.yaml`** (after envsubst) — the **complete** deployment spec plus
+   environment-specific settings (catalog, DB name, secret names), with per-user values
+   resolved from `.env`.
 
-This means committed files never contain per-user values. The `--set` flags inject them at
-deploy time from `.env`.
+Helm replaces arrays wholesale rather than merging elements, so the full deployment
+definition (image, port, volumes, env, etc.) lives in each per-env file. `envsubst`
+resolves `${VAR}` placeholders at deploy time so committed files never contain per-user
+values.
 
 ## What gets deployed
 
@@ -53,6 +51,20 @@ Each Helm release (`dagster-stage`, `dagster-prod`) creates these in its namespa
 | Daemon | 1 | Runs schedules, sensors, run coordinator |
 | Code server | 1 | Loads asset definitions from the Docker image |
 | Run pods | 0–N | Spun up per-run by the K8sRunLauncher; cleaned up after |
+
+### Run pod configuration
+
+Run pods do **not** inherit env vars, volumes, labels, or secrets from the user
+code deployment. They only inherit the image. Everything else must be configured
+separately under `runLauncher.config.k8sRunLauncher` in the per-env values file:
+
+- `envVars` — environment variables (Databricks host, catalog, etc.)
+- `envSecrets` — K8s Secrets to load (e.g. `dagster-dbx-stage`)
+- `labels` — must include `azure.workload.identity/use: "true"` for Key Vault access
+- `volumes` / `volumeMounts` — CSI secrets-store volume for Key Vault
+
+If a run pod is missing credentials, check this config first — the user deployment
+having them does not mean the run pod does.
 
 ### Secrets injection
 

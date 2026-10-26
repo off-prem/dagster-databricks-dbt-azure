@@ -11,7 +11,7 @@ Each asset, when materialized (run), does the following:
      DATABRICKS_HOST + DBX_SP_CLIENT_ID + DBX_SP_SECRET, all from Key Vault)
   2. Creates a PipesDatabricksServerlessClient (Dagster's integration for
      submitting and monitoring Databricks jobs)
-  3. Submits a serverless Python task that runs the entrypoint script
+  3. Submits a serverless notebook task that runs the entrypoint notebook
      (databricks/src/extract/entrypoint.py) inside Databricks
   4. Passes the source name, catalog, and any auth credentials as "extras"
      (Dagster Pipes' mechanism for sending data to the remote job)
@@ -25,7 +25,7 @@ import os
 from pathlib import Path
 
 import yaml
-from dagster import AssetExecutionContext, AssetKey, asset
+from dagster import AssetExecutionContext, AssetKey, MaterializeResult, asset
 
 # Navigate from this file up to the repo root to find sources.yml.
 # This file: dagster/src/poc/assets/extract.py → repo root is 4 levels up.
@@ -55,7 +55,7 @@ def _make_raw_asset(source_config):
         kinds={"python", "databricks"},
         description=f"Ingest {name} from {url} into landing volume via Databricks serverless.",
     )
-    def _asset(context: AssetExecutionContext) -> None:
+    def _asset(context: AssetExecutionContext) -> MaterializeResult:
         # Imports are inside the function so they only load when the asset
         # actually runs (not at definition time when Dagster starts up).
         from databricks.sdk import WorkspaceClient
@@ -67,9 +67,12 @@ def _make_raw_asset(source_config):
         bundle_root = os.environ["DBX_BUNDLE_ROOT"]
         catalog = os.environ["DBX_CATALOG"]
 
-        # WorkspaceClient reads DATABRICKS_HOST, DBX_SP_CLIENT_ID, and
-        # DBX_SP_SECRET from environment variables to authenticate.
-        ws = WorkspaceClient()
+        ws = WorkspaceClient(
+            host=os.environ["DATABRICKS_HOST"],
+            azure_client_id=os.environ["DBX_SP_CLIENT_ID"],
+            azure_client_secret=os.environ["DBX_SP_SECRET"],
+            azure_tenant_id=os.environ["AZURE_TENANT_ID"],
+        )
 
         # PipesDatabricksServerlessClient handles the Dagster Pipes protocol:
         # writing context files to the volume, submitting the job, and reading
@@ -79,15 +82,16 @@ def _make_raw_asset(source_config):
             volume_path=f"/Volumes/{catalog}/bronze/landing",
         )
 
-        # Define the Databricks task — a Python script to run on serverless compute.
-        # The python_file path points to the bundled entrypoint in the workspace
-        # (deployed by `scripts/bundle-deploy.sh`).
+        # Define the Databricks task — a notebook to run on serverless compute.
+        # The notebook_path points to the bundled entrypoint in the workspace
+        # (deployed by `scripts/bundle-deploy.sh`). No .py extension — the
+        # bundle deploys files with the notebook header as notebooks.
         task = jobs.SubmitTask.from_dict({
             "task_key": f"ingest_{name}",
-            "spark_python_task": {
-                "python_file": f"{bundle_root}/files/src/extract/entrypoint.py",
+            "notebook_task": {
+                "notebook_path": f"{bundle_root}/src/extract/entrypoint",
+                "source": "WORKSPACE",
             },
-            "environment_key": "Default",
         })
 
         # Pass source config and auth credentials to the Databricks job via
@@ -101,20 +105,11 @@ def _make_raw_asset(source_config):
             extras["auth_header"] = auth["header"]
             extras["auth_value"] = secret_val
 
-        # Submit the job and wait for it to complete. The serverless environment
-        # spec installs the Python packages the entrypoint script needs.
-        client.run(
+        # Submit the job and wait for it to complete. Dependencies are installed
+        # via %pip install in the notebook's first cell.
+        return client.run(
             task=task,
             extras=extras,
-            submit_args={
-                "environments": [{
-                    "environment_key": "Default",
-                    "spec": {
-                        "client": "1",
-                        "dependencies": ["dagster-pipes", "requests", "pyyaml"],
-                    },
-                }],
-            },
             context=context,
         ).get_materialize_result()
 
