@@ -32,6 +32,10 @@ collect-bundle env:
 show-env:
     @scripts/setup-env.sh show
 
+# Sync .env to GitHub repo variables + create environments for CI/CD
+setup-ci *ARGS:
+    scripts/setup-ci.sh {{ ARGS }}
+
 # ── Terraform ────────────────────────────────────────────────────────────────
 
 # terraform init (stack: bootstrap, shared, env-stage, env-prod)

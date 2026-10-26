@@ -1,0 +1,85 @@
+name: deploy-stage
+on: { push: { branches: [main] } }
+permissions: { id-token: write, contents: read }
+concurrency: { group: deploy-stage, cancel-in-progress: false }
+
+env:
+  TF_VAR_project: ${{ vars.TF_VAR_PROJECT || 'dagster' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: stage
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create stub .env for CI
+        run: touch .env
+
+      # ── Build + push image ───────────────────────────────────────────────
+      - name: Build and push image to ACR
+        run: |
+          az acr build \
+            --registry "${{ vars.ACR_NAME }}" \
+            --image "poc:${{ github.sha }}" \
+            --file dagster/Dockerfile \
+            .
+
+      # ── Helm deploy to stage ─────────────────────────────────────────────
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.22.1"
+
+      - name: Add Dagster Helm repo
+        run: helm repo add dagster https://dagster-io.github.io/helm && helm repo update
+
+      - name: Install kubelogin
+        run: |
+          curl -fsSL https://github.com/Azure/kubelogin/releases/download/v0.2.22/kubelogin-linux-amd64.zip -o kubelogin.zip
+          unzip -o kubelogin.zip -d kubelogin-tmp
+          sudo mv kubelogin-tmp/bin/linux_amd64/kubelogin /usr/local/bin/kubelogin
+          rm -rf kubelogin.zip kubelogin-tmp
+
+      - name: Get AKS credentials
+        run: |
+          PROJECT="${{ env.TF_VAR_project }}"
+          az aks get-credentials \
+            --resource-group "rg-${PROJECT}-shared" \
+            --name "aks-${PROJECT}" \
+            --overwrite-existing
+          kubelogin convert-kubeconfig -l azurecli
+
+      - name: Helm upgrade (stage)
+        run: |
+          scripts/helm-upgrade.sh stage \
+            --set "dagster-user-deployments.deployments[0].image.tag=${{ github.sha }}"
+        env:
+          ACR_LOGIN_SERVER: ${{ vars.ACR_NAME }}.azurecr.io
+          PG_FQDN: ${{ vars.PG_FQDN }}
+          DBX_STAGE_HOST: ${{ vars.DBX_STAGE_HOST }}
+          DBX_STAGE_WAREHOUSE_HTTP_PATH: ${{ vars.DBX_STAGE_WAREHOUSE_HTTP_PATH }}
+          DAGSTER_STAGE_IDENTITY_CLIENT_ID: ${{ vars.DAGSTER_STAGE_IDENTITY_CLIENT_ID }}
+
+      # ── Bundle deploy to stage ───────────────────────────────────────────
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Bundle deploy (stage)
+        run: scripts/bundle-deploy.sh stage
+        env:
+          DBX_STAGE_HOST: ${{ vars.DBX_STAGE_HOST }}
+          DBX_STAGE_SP_CLIENT_ID: ${{ vars.DBX_STAGE_SP_CLIENT_ID }}
+
+      # ── Smoke test ───────────────────────────────────────────────────────
+      - name: Smoke test (stage)
+        run: scripts/smoke-test.sh stage
+        env:
+          TF_VAR_project: ${{ env.TF_VAR_project }}

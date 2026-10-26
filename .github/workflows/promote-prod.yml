@@ -1,0 +1,94 @@
+name: promote-prod
+on:
+  workflow_run:
+    workflows: [deploy-stage]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      sha: { description: "Git SHA to promote (rollback)", required: true }
+permissions: { id-token: write, contents: read }
+concurrency: { group: deploy-prod, cancel-in-progress: false }
+
+env:
+  TF_VAR_project: ${{ vars.TF_VAR_PROJECT || 'dagster' }}
+
+jobs:
+  promote:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Resolve SHA
+        id: sha
+        run: |
+          if [ -n "${{ inputs.sha }}" ]; then
+            echo "sha=${{ inputs.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.sha.outputs.sha }}
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create stub .env for CI
+        run: touch .env
+
+      # ── Helm deploy to prod (same image SHA — no rebuild) ────────────────
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.22.1"
+
+      - name: Add Dagster Helm repo
+        run: helm repo add dagster https://dagster-io.github.io/helm && helm repo update
+
+      - name: Install kubelogin
+        run: |
+          curl -fsSL https://github.com/Azure/kubelogin/releases/download/v0.2.22/kubelogin-linux-amd64.zip -o kubelogin.zip
+          unzip -o kubelogin.zip -d kubelogin-tmp
+          sudo mv kubelogin-tmp/bin/linux_amd64/kubelogin /usr/local/bin/kubelogin
+          rm -rf kubelogin.zip kubelogin-tmp
+
+      - name: Get AKS credentials
+        run: |
+          PROJECT="${{ env.TF_VAR_project }}"
+          az aks get-credentials \
+            --resource-group "rg-${PROJECT}-shared" \
+            --name "aks-${PROJECT}" \
+            --overwrite-existing
+          kubelogin convert-kubeconfig -l azurecli
+
+      - name: Helm upgrade (prod)
+        run: |
+          scripts/helm-upgrade.sh prod \
+            --set "dagster-user-deployments.deployments[0].image.tag=${{ steps.sha.outputs.sha }}"
+        env:
+          ACR_LOGIN_SERVER: ${{ vars.ACR_NAME }}.azurecr.io
+          PG_FQDN: ${{ vars.PG_FQDN }}
+          DBX_PROD_HOST: ${{ vars.DBX_PROD_HOST }}
+          DBX_PROD_WAREHOUSE_HTTP_PATH: ${{ vars.DBX_PROD_WAREHOUSE_HTTP_PATH }}
+          DAGSTER_PROD_IDENTITY_CLIENT_ID: ${{ vars.DAGSTER_PROD_IDENTITY_CLIENT_ID }}
+
+      # ── Bundle deploy to prod (same SHA) ─────────────────────────────────
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Bundle deploy (prod)
+        run: scripts/bundle-deploy.sh prod
+        env:
+          DBX_PROD_HOST: ${{ vars.DBX_PROD_HOST }}
+          DBX_PROD_SP_CLIENT_ID: ${{ vars.DBX_PROD_SP_CLIENT_ID }}
+
+      # ── Smoke test ───────────────────────────────────────────────────────
+      - name: Smoke test (prod)
+        run: scripts/smoke-test.sh prod
+        env:
+          TF_VAR_project: ${{ env.TF_VAR_project }}

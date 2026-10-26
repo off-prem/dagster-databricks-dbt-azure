@@ -1,15 +1,114 @@
 name: pr-checks
 on: { pull_request: { branches: [main] } }
 permissions: { id-token: write, contents: read, pull-requests: write }
+
+env:
+  TF_VAR_project: ${{ vars.TF_VAR_PROJECT || 'dagster' }}
+  TF_VAR_location: ${{ vars.TF_VAR_LOCATION || 'eastus2' }}
+  TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_tenant_id: ${{ vars.AZURE_TENANT_ID }}
+  TF_VAR_my_ip_cidr: "0.0.0.0/32"
+  TF_VAR_github_repo: ${{ github.repository }}
+  TF_VAR_github_oidc_prefix: ${{ vars.TF_VAR_GITHUB_OIDC_PREFIX }}
+  TF_VAR_owner: ci
+  TF_VAR_metastore_id: ${{ vars.TF_VAR_METASTORE_ID || '' }}
+  TF_VAR_access_connector_id_stage: ${{ vars.TF_VAR_ACCESS_CONNECTOR_ID_STAGE || '' }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  TERRAFORM_VERSION: "1.17.0"
+  UV_VERSION: "0.11.14"
+
 jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      # TODO (Phase 5.1): terraform fmt/validate/plan(stage), bundle validate, dbt parse, dg check defs, pytest, docker build
-      - run: echo "pr-checks skeleton — see docs/concepts/cicd.md"
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      # ── Terraform ────────────────────────────────────────────────────────
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive infra/
+
+      - name: Terraform init (shared)
+        run: |
+          terraform -chdir=infra/shared init -backend=false
+
+      - name: Terraform validate (shared)
+        run: terraform -chdir=infra/shared validate
+
+      - name: Terraform init (env)
+        run: |
+          terraform -chdir=infra/env init -backend=false
+
+      - name: Terraform validate (env)
+        run: terraform -chdir=infra/env validate
+
+      # ── Databricks bundle ────────────────────────────────────────────────
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Bundle validate (stage)
+        working-directory: databricks
+        run: databricks bundle validate -t stage
+        env:
+          DATABRICKS_HOST: "https://placeholder.azuredatabricks.net"
+
+      # ── dbt ──────────────────────────────────────────────────────────────
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Install Python dependencies
+        working-directory: dagster
+        run: uv sync --frozen --no-dev
+
+      - name: dbt deps + parse
+        working-directory: dbt
+        run: |
+          ../dagster/.venv/bin/dbt deps
+          ../dagster/.venv/bin/dbt parse
+        env:
+          DATABRICKS_HOST: "https://placeholder.azuredatabricks.net"
+          DBX_WAREHOUSE_HTTP_PATH: "/sql/1.0/warehouses/placeholder"
+          DBX_CATALOG: ci
+          DBX_SP_CLIENT_ID: placeholder
+          DBX_SP_SECRET: placeholder
+
+      # ── Dagster ──────────────────────────────────────────────────────────
+      - name: Dagster check defs
+        working-directory: dagster
+        run: uv run dg check defs
+        env:
+          DAGSTER_DBT_PARSE_PROJECT_ON_LOAD: "1"
+          DATABRICKS_HOST: "https://placeholder.azuredatabricks.net"
+          DBX_WAREHOUSE_HTTP_PATH: "/sql/1.0/warehouses/placeholder"
+          DBX_CATALOG: ci
+          DBX_SP_CLIENT_ID: placeholder
+          DBX_SP_SECRET: placeholder
+          DBX_BUNDLE_ROOT: "/Workspace/.bundle/dagster/stage/files"
+
+      - name: Pytest
+        working-directory: dagster
+        run: uv run pytest
+        env:
+          DAGSTER_DBT_PARSE_PROJECT_ON_LOAD: "1"
+          DATABRICKS_HOST: "https://placeholder.azuredatabricks.net"
+          DBX_WAREHOUSE_HTTP_PATH: "/sql/1.0/warehouses/placeholder"
+          DBX_CATALOG: ci
+          DBX_SP_CLIENT_ID: placeholder
+          DBX_SP_SECRET: placeholder
+          DBX_BUNDLE_ROOT: "/Workspace/.bundle/dagster/stage/files"
+
+      # ── Docker build (no push) ───────────────────────────────────────────
+      - name: Docker build
+        run: docker build -f dagster/Dockerfile .

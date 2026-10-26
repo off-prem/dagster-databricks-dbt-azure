@@ -34,8 +34,8 @@ Read `docs/guide.md` first. It is the source of truth for setup steps and progre
 - `databricks/` — Databricks Asset Bundle (SDP pipeline), targets `stage`/`prod`
 - `dbt/` — dbt project targeting a Databricks SQL warehouse
 - `deploy/helm/` — Dagster Helm values (base + per env); `deploy/k8s/` — SecretProviderClass etc.
-- `scripts/` — setup-tools, setup-env/load-env, helm-upgrade, bundle-deploy, stop/start, teardown/standup, smoke test, port-forward
-- `ci/pending-workflows/` — pr-checks, deploy-stage, promote-prod (parked; `git mv` into `.github/workflows/` at Phase 0.8 for pr-checks, 5.2/5.3 for the others)
+- `scripts/` — setup-tools, setup-env/load-env, setup-ci, helm-upgrade, bundle-deploy, stop/start, teardown/standup, smoke test, port-forward
+- `.github/workflows/` — pr-checks, deploy-stage, promote-prod (active)
 
 ## Key commands
 ```
@@ -52,16 +52,16 @@ scripts/port-forward.sh stage              # Dagster UI at http://localhost:3000
 scripts/stop.sh / scripts/start.sh         # cost control (pause — floor ~$35-40/mo)
 scripts/teardown.sh / scripts/standup.sh   # cost control (delete AKS — floor ~$15/mo)
 scripts/destroy-all.sh                     # destroy everything, start fresh
+scripts/setup-ci.sh                        # sync .env → GitHub repo variables + create environments
 scripts/verify.sh 0                        # verify phase 0 is complete (0-5)
 ```
 
 ## Current state
 <!-- Update after every phase. A fresh session reads this first. -->
-- Phase: 4 (complete)
-- Steps with ✅ in `docs/guide.md`: 0.1–0.9, 1.1–1.4, 2.1–2.11, 3.1–3.3, 4.1–4.6
-- Next step: 5.1 activate CI/CD workflows
+- Phase: 5 (in progress)
+- Steps with ✅ in `docs/guide.md`: 0.1–0.9, 1.1–1.4, 2.1–2.11, 3.1–3.3, 4.1–4.6, 5.1–5.3
+- Next step: 5.4 first prod promotion (push a PR, verify the full flow)
 - Known blockers: none
 - Values collected: ACR_NAME, PG_FQDN, KV_NAME, STORAGE_ACCOUNT_NAME, AKS_EGRESS_IP in `.env`
 - Note: Postgres runs in centralus (B-series unavailable in eastus2); AKS uses D2as_v6 (B-series VMs unavailable)
 - Note: run pods need explicit env/volume/label config — they do NOT inherit from user deployments
-- CI workflows (Phase 5): deploy-stage.yml and promote-prod.yml are still skeletons with TODO comments
