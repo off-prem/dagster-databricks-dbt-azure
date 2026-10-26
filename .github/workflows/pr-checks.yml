@@ -61,7 +61,8 @@ jobs:
         working-directory: databricks
         run: databricks bundle validate -t stage
         env:
-          DATABRICKS_HOST: "https://placeholder.azuredatabricks.net"
+          DATABRICKS_HOST: ${{ vars.DBX_STAGE_HOST }}
+          DATABRICKS_AUTH_TYPE: azure-cli
 
       # ── dbt ──────────────────────────────────────────────────────────────
       - uses: astral-sh/setup-uv@v6
