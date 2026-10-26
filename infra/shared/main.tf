@@ -157,16 +157,16 @@ resource "azurerm_kubernetes_cluster" "this" {
   location            = azurerm_resource_group.shared.location
   resource_group_name = azurerm_resource_group.shared.name
   dns_prefix          = "aks-${var.project}"
-  sku_tier            = "Free"    # Free tier — no SLA, fine for a POC
+  sku_tier            = "Free" # Free tier — no SLA, fine for a POC
 
   # The node pool defines the VMs that run containers. One 2-vCPU node
   # is enough for this POC. VM size is configurable via var.aks_vm_size.
   default_node_pool {
-    name           = "system"
-    node_count     = 1
-    vm_size        = var.aks_vm_size
+    name            = "system"
+    node_count      = 1
+    vm_size         = var.aks_vm_size
     os_disk_size_gb = 32
-    vnet_subnet_id = azurerm_subnet.aks.id   # place nodes in the AKS subnet
+    vnet_subnet_id  = azurerm_subnet.aks.id # place nodes in the AKS subnet
   }
 
   # SystemAssigned identity — AKS gets its own Azure identity (like a service
@@ -277,8 +277,8 @@ resource "azurerm_key_vault" "this" {
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
   rbac_authorization_enabled = true
-  purge_protection_enabled   = false     # false for POC — lets us fully delete
-  soft_delete_retention_days = 7         # minimum retention
+  purge_protection_enabled   = false # false for POC — lets us fully delete
+  soft_delete_retention_days = 7     # minimum retention
 
   # Firewall: deny all traffic by default, then allow:
   #   - your IP (so you can manage secrets via the CLI)
@@ -336,12 +336,12 @@ resource "azurerm_postgresql_flexible_server" "this" {
   location                      = var.pg_location
   version                       = var.pg_version
   sku_name                      = var.pg_sku_name
-  storage_mb                    = 32768                # 32 GB storage
+  storage_mb                    = 32768 # 32 GB storage
   administrator_login           = "pgadmin"
   administrator_password        = random_password.pg_admin.result
   backup_retention_days         = 7
-  geo_redundant_backup_enabled  = false     # save cost — single-region is fine for POC
-  public_network_access_enabled = true      # reachable from AKS and your machine
+  geo_redundant_backup_enabled  = false # save cost — single-region is fine for POC
+  public_network_access_enabled = true  # reachable from AKS and your machine
   tags                          = local.tags
 
   lifecycle {
@@ -397,8 +397,8 @@ resource "azurerm_storage_account" "this" {
   location                        = azurerm_resource_group.shared.location
   account_tier                    = "Standard"
   account_replication_type        = "LRS"
-  is_hns_enabled                  = true     # this makes it ADLS Gen2
-  shared_access_key_enabled       = false    # RBAC only, no shared keys
+  is_hns_enabled                  = true  # this makes it ADLS Gen2
+  shared_access_key_enabled       = false # RBAC only, no shared keys
   default_to_oauth_authentication = true
 
   # Firewall: deny all except your IP, Azure services, and Databricks access
@@ -457,17 +457,17 @@ resource "azurerm_network_security_perimeter_profile" "this" {
 }
 
 resource "azurerm_network_security_perimeter_access_rule" "dbx_serverless" {
-  name                                   = "allow-databricks-serverless"
-  network_security_perimeter_profile_id  = azurerm_network_security_perimeter_profile.this.id
-  direction                              = "Inbound"
-  service_tags                           = ["AzureDatabricksServerless"]
+  name                                  = "allow-databricks-serverless"
+  network_security_perimeter_profile_id = azurerm_network_security_perimeter_profile.this.id
+  direction                             = "Inbound"
+  service_tags                          = ["AzureDatabricksServerless"]
 }
 
 resource "azurerm_network_security_perimeter_association" "storage" {
-  name                                   = "assoc-${var.project}-storage"
-  network_security_perimeter_profile_id  = azurerm_network_security_perimeter_profile.this.id
-  resource_id                            = azurerm_storage_account.this.id
-  access_mode                            = "Learning"
+  name                                  = "assoc-${var.project}-storage"
+  network_security_perimeter_profile_id = azurerm_network_security_perimeter_profile.this.id
+  resource_id                           = azurerm_storage_account.this.id
+  access_mode                           = "Learning"
 }
 
 resource "azurerm_storage_container" "bronze" {

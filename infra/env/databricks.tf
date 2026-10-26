@@ -144,10 +144,10 @@ resource "azuread_application_password" "databricks_sp" {
 # recognizes it (Entra identity alone isn't enough — Databricks has its own
 # user/SP registry).
 resource "databricks_service_principal" "dagster" {
-  count                = local.create_dbx
-  application_id       = azuread_application.databricks_sp[0].client_id
-  display_name         = "sp-${var.project}-${var.env}"
-  workspace_access     = true
+  count                 = local.create_dbx
+  application_id        = azuread_application.databricks_sp[0].client_id
+  display_name          = "sp-${var.project}-${var.env}"
+  workspace_access      = true
   databricks_sql_access = true
 }
 
