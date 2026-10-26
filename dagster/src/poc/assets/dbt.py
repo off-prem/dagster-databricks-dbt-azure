@@ -12,6 +12,7 @@ This means:
 The dbt project lives at the repo root under dbt/. It connects to Databricks
 via a SQL warehouse (configured in dbt/profiles.yml using env vars).
 """
+import os
 from pathlib import Path
 
 from dagster import AssetExecutionContext
@@ -22,11 +23,14 @@ from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
 REPO_ROOT = Path(__file__).parents[4]
 DBT_PROJECT_DIR = REPO_ROOT / "dbt"
 
-# DbtProject parses the dbt project and locates its manifest. During local
-# development (not in a deployed pod), prepare_if_dev() runs `dbt parse` to
-# generate the manifest if it doesn't exist yet.
 dbt_project = DbtProject(project_dir=DBT_PROJECT_DIR)
-dbt_project.prepare_if_dev()
+
+if os.getenv("DAGSTER_DBT_PARSE_PROJECT_ON_LOAD"):
+    # In a deployed pod: run dbt parse unconditionally using real credentials
+    # from the pod env. prepare_if_dev() only fires under `dagster dev`.
+    dbt_project.preparer.prepare(dbt_project)
+else:
+    dbt_project.prepare_if_dev()
 
 
 @dbt_assets(manifest=dbt_project.manifest_path)

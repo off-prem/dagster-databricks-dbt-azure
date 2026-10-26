@@ -19,6 +19,28 @@ locals {
   create_dbx = var.metastore_id != "" ? 1 : 0
 }
 
+# ── Storage credential ───────────────────────────────────────────────────────
+# Registers the Access Connector as a Unity Catalog storage credential so
+# Databricks can read/write ADLS on behalf of the catalog. Required when the
+# metastore uses Databricks-managed "Default Storage" (the auto-created
+# metastore) — without this, CREATE CATALOG fails because there is no
+# storage root configured on the metastore itself.
+
+resource "databricks_storage_credential" "this" {
+  count = local.create_dbx
+  name  = "sc-${var.project}-${var.env}"
+  azure_managed_identity {
+    access_connector_id = azurerm_databricks_access_connector.this.id
+  }
+}
+
+resource "databricks_external_location" "this" {
+  count           = local.create_dbx
+  name            = "el-${var.project}-${var.env}"
+  url             = "abfss://metastore@${data.azurerm_storage_account.shared.name}.dfs.core.windows.net/catalogs/${var.env}"
+  credential_name = databricks_storage_credential.this[0].name
+}
+
 # ── Unity Catalog: catalog, schemas, volume ──────────────────────────────────
 # Unity Catalog is Databricks' data governance layer. Think of it as:
 #   catalog → database (top-level namespace, one per environment)
@@ -28,10 +50,15 @@ locals {
 # The hierarchy is: catalog.schema.table or catalog.schema.volume
 
 # One catalog per environment: "stage" or "prod".
+# storage_root is required because the auto-created metastore uses Default
+# Storage and has no ADLS root of its own. The external location must exist
+# first so Databricks can validate the path.
 resource "databricks_catalog" "this" {
-  count   = local.create_dbx
-  name    = var.env
-  comment = "Dagster POC ${var.env} catalog"
+  count        = local.create_dbx
+  name         = var.env
+  comment      = "Dagster POC ${var.env} catalog"
+  storage_root = "abfss://metastore@${data.azurerm_storage_account.shared.name}.dfs.core.windows.net/catalogs/${var.env}"
+  depends_on   = [databricks_external_location.this]
 }
 
 # bronze schema — raw data ingested from APIs lands here as Delta tables.
@@ -117,9 +144,11 @@ resource "azuread_application_password" "databricks_sp" {
 # recognizes it (Entra identity alone isn't enough — Databricks has its own
 # user/SP registry).
 resource "databricks_service_principal" "dagster" {
-  count          = local.create_dbx
-  application_id = azuread_application.databricks_sp[0].client_id
-  display_name   = "sp-${var.project}-${var.env}"
+  count                = local.create_dbx
+  application_id       = azuread_application.databricks_sp[0].client_id
+  display_name         = "sp-${var.project}-${var.env}"
+  workspace_access     = true
+  databricks_sql_access = true
 }
 
 # ── IP access list ───────────────────────────────────────────────────────────
@@ -144,10 +173,10 @@ resource "databricks_ip_access_list" "user" {
 
 resource "databricks_ip_access_list" "aks_egress" {
   count        = local.create_dbx
-  depends_on   = [databricks_workspace_conf.ip_access]
+  depends_on   = [databricks_ip_access_list.user]
   label        = "aks-egress"
   list_type    = "ALLOW"
-  ip_addresses = ["${data.azurerm_public_ip.aks_egress.ip_address}/32"]
+  ip_addresses = ["${var.aks_egress_ip}/32"]
 }
 
 # ── Unity Catalog grants ────────────────────────────────────────────────────
@@ -164,7 +193,7 @@ resource "databricks_grants" "catalog" {
   catalog = databricks_catalog.this[0].name
   grant {
     principal  = azuread_application.databricks_sp[0].client_id
-    privileges = ["USE_CATALOG"]
+    privileges = ["USE_CATALOG", "CREATE_SCHEMA"]
   }
 }
 

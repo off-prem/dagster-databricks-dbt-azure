@@ -1,0 +1,13 @@
+.git
+.env
+infra
+deploy
+scripts
+docs
+ci
+databricks/src
+dbt/target
+dbt/logs
+**/__pycache__
+**/.terraform*
+*.tfstate*

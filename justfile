@@ -46,8 +46,8 @@ tf-init stack *ARGS:
     case "{{ stack }}" in
       bootstrap) terraform -chdir=infra/bootstrap init {{ ARGS }} ;;
       shared)    terraform -chdir=infra/shared init $(_backend) -backend-config="key=shared.tfstate" {{ ARGS }} ;;
-      env-stage) TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env init $(_backend) -backend-config="key=stage.tfstate" {{ ARGS }} ;;
-      env-prod)  TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env init $(_backend) -backend-config="key=prod.tfstate" {{ ARGS }} ;;
+      env-stage) TF_DATA_DIR="$(pwd)/infra/env/.terraform-stage" terraform -chdir=infra/env init $(_backend) -backend-config="key=stage.tfstate" {{ ARGS }} ;;
+      env-prod)  TF_DATA_DIR="$(pwd)/infra/env/.terraform-prod"  terraform -chdir=infra/env init $(_backend) -backend-config="key=prod.tfstate" {{ ARGS }} ;;
       *) echo "Unknown stack '{{ stack }}'. Use: bootstrap, shared, env-stage, env-prod." >&2; exit 1 ;;
     esac
 
@@ -59,9 +59,11 @@ tf-plan stack *ARGS:
       bootstrap) terraform -chdir=infra/bootstrap plan {{ ARGS }} ;;
       shared)    terraform -chdir=infra/shared plan {{ ARGS }} ;;
       env-stage) export TF_VAR_databricks_host="${DBX_STAGE_HOST:-}"
-                 TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env plan -var-file=stage.tfvars {{ ARGS }} ;;
+                 export TF_VAR_aks_egress_ip="${AKS_EGRESS_IP:?AKS_EGRESS_IP is blank in .env}"
+                 TF_DATA_DIR="$(pwd)/infra/env/.terraform-stage" terraform -chdir=infra/env plan -var-file=stage.tfvars {{ ARGS }} ;;
       env-prod)  export TF_VAR_databricks_host="${DBX_PROD_HOST:-}"
-                 TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env plan -var-file=prod.tfvars {{ ARGS }} ;;
+                 export TF_VAR_aks_egress_ip="${AKS_EGRESS_IP:?AKS_EGRESS_IP is blank in .env}"
+                 TF_DATA_DIR="$(pwd)/infra/env/.terraform-prod"  terraform -chdir=infra/env plan -var-file=prod.tfvars {{ ARGS }} ;;
       *) echo "Unknown stack '{{ stack }}'. Use: bootstrap, shared, env-stage, env-prod." >&2; exit 1 ;;
     esac
 
@@ -73,9 +75,11 @@ tf-apply stack *ARGS:
       bootstrap) terraform -chdir=infra/bootstrap apply {{ ARGS }} ;;
       shared)    terraform -chdir=infra/shared apply {{ ARGS }} ;;
       env-stage) export TF_VAR_databricks_host="${DBX_STAGE_HOST:-}"
-                 TF_DATA_DIR=infra/env/.terraform-stage terraform -chdir=infra/env apply -var-file=stage.tfvars {{ ARGS }} ;;
+                 export TF_VAR_aks_egress_ip="${AKS_EGRESS_IP:?AKS_EGRESS_IP is blank in .env}"
+                 TF_DATA_DIR="$(pwd)/infra/env/.terraform-stage" terraform -chdir=infra/env apply -var-file=stage.tfvars {{ ARGS }} ;;
       env-prod)  export TF_VAR_databricks_host="${DBX_PROD_HOST:-}"
-                 TF_DATA_DIR=infra/env/.terraform-prod  terraform -chdir=infra/env apply -var-file=prod.tfvars {{ ARGS }} ;;
+                 export TF_VAR_aks_egress_ip="${AKS_EGRESS_IP:?AKS_EGRESS_IP is blank in .env}"
+                 TF_DATA_DIR="$(pwd)/infra/env/.terraform-prod"  terraform -chdir=infra/env apply -var-file=prod.tfvars {{ ARGS }} ;;
       *) echo "Unknown stack '{{ stack }}'. Use: bootstrap, shared, env-stage, env-prod." >&2; exit 1 ;;
     esac
 

@@ -1,23 +1,65 @@
 # ┌─────────────────────────────────────────────────────────────────────────────┐
-# │ Prod environment overrides                                                │
-# │                                                                           │
-# │ Same structure as values.stage.yaml — diff should be trivial (just env-   │
-# │ specific names). Per-user values overridden by helm-upgrade.sh from .env. │
+# │ Prod environment values                                                     │
+# │                                                                             │
+# │ Same structure as values.stage.yaml — diff should be trivial (just env-     │
+# │ specific names). Processed by envsubst in scripts/helm-upgrade.sh.          │
+# │                                                                             │
+# │ The deployment spec must be COMPLETE here — see values.stage.yaml header.   │
 # └─────────────────────────────────────────────────────────────────────────────┘
 
 global:
   postgresqlSecretName: dagster-postgres
 
 postgresql:
-  postgresqlHost: ""        # overridden: ${PG_FQDN}
+  postgresqlHost: "${PG_FQDN}"
   postgresqlDatabase: dagster_prod
   postgresqlUsername: pgadmin
   postgresqlParams:
     sslmode: require
 
+serviceAccount:
+  name: "${RELEASE}"
+  annotations:
+    azure.workload.identity/client-id: "${IDENTITY_CLIENT_ID}"
+
+runLauncher:
+  config:
+    k8sRunLauncher:
+      envVars:
+        - "DAGSTER_ENV=prod"
+        - "DBX_CATALOG=prod"
+        - "DATABRICKS_HOST=${DBX_HOST}"
+        - "DBX_BUNDLE_ROOT=${DBX_BUNDLE_ROOT}"
+        - "DBX_WAREHOUSE_HTTP_PATH=${DBX_WAREHOUSE}"
+        - "DBT_PROFILES_DIR=/app/dbt"
+      envSecrets:
+        - name: dagster-dbx-prod
+      labels:
+        azure.workload.identity/use: "true"
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: dagster-secrets
+      volumeMounts:
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true
+
 dagster-user-deployments:
+  serviceAccount:
+    create: false
+    name: "${RELEASE}"
   deployments:
     - name: poc
+      image:
+        repository: "${ACR_LOGIN_SERVER}/poc"
+        tag: latest
+        pullPolicy: IfNotPresent
+      dagsterApiGrpcArgs: ["-m", "poc.definitions"]
+      port: 3030
       labels:
         azure.workload.identity/use: "true"
       env:
@@ -26,10 +68,29 @@ dagster-user-deployments:
         - name: DBX_CATALOG
           value: prod
         - name: DATABRICKS_HOST
-          value: ""         # overridden: ${DBX_PROD_HOST}
+          value: "${DBX_HOST}"
         - name: DBX_BUNDLE_ROOT
-          value: ""         # overridden: /Workspace/.bundle/dagster/prod/files
+          value: "${DBX_BUNDLE_ROOT}"
         - name: DBX_WAREHOUSE_HTTP_PATH
-          value: ""         # overridden: ${DBX_PROD_WAREHOUSE_HTTP_PATH}
+          value: "${DBX_WAREHOUSE}"
+        - name: DBT_PROFILES_DIR
+          value: /app/dbt
       envSecrets:
         - name: dagster-dbx-prod
+      resources:
+        requests:
+          cpu: 100m
+          memory: 2Gi
+        limits:
+          memory: 2Gi
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: dagster-secrets
+      volumeMounts:
+        - name: secrets-store
+          mountPath: /mnt/secrets-store
+          readOnly: true

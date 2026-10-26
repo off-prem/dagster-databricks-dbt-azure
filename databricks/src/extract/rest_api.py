@@ -2,20 +2,21 @@
 REST API extraction — fetches data from an HTTP endpoint and writes it to a
 Unity Catalog Volume as newline-delimited JSON.
 
-This module runs INSIDE Databricks (serverless compute). It's called by
-entrypoint.py, which is submitted by Dagster via Pipes.
+This module runs INSIDE Databricks (serverless notebook compute). It's called
+by entrypoint.py, which is submitted by Dagster via Pipes.
 
 The data flow is:
   1. Read the source config from sources.yml (URL, headers, params)
   2. HTTP GET the API endpoint
   3. Write the response as newline-delimited JSON to:
-     /Volumes/{catalog}/bronze/landing/{source_name}/{timestamp}.json
+     /Volumes/{catalog}/bronze/landing/{source_name}/latest.json
   4. Return metadata (record count, file path) for Dagster to log
 
 The Volume path follows Unity Catalog's three-level namespace:
   /Volumes/<catalog>/<schema>/<volume>/<your-path>
-  e.g. /Volumes/stage/bronze/landing/posts/20261024_153000.json
+  e.g. /Volumes/stage/bronze/landing/posts/latest.json
 """
+import io
 import json
 from pathlib import Path
 
@@ -69,7 +70,10 @@ def extract_to_volume(source_name, catalog, auth_headers=None):
     # format for loading into Delta tables via Databricks.
     volume_path = f"/Volumes/{catalog}/bronze/landing/{source_name}/latest.json"
 
-    with open(volume_path, "w") as f:
-        f.write("\n".join(json.dumps(record) for record in data))
+    ndjson = "\n".join(json.dumps(record) for record in data)
+    from databricks.sdk import WorkspaceClient
+    WorkspaceClient().files.upload(
+        volume_path, io.BytesIO(ndjson.encode("utf-8")), overwrite=True,
+    )
 
     return {"num_records": len(data), "volume_path": volume_path, "source_url": source["url"]}

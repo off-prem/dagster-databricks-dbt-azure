@@ -25,3 +25,23 @@ echo "Deploying bundle to ${ENV} (host: ${DATABRICKS_HOST})"
 cd "${ROOT}/databricks"
 set -x
 databricks bundle deploy -t "${ENV}" "$@"
+set +x
+
+# Grant the service principal CAN_RUN on the bundle directory so Databricks
+# serverless jobs (which run as the SP) can read the deployed Python files.
+# Read the bundle name from databricks.yml (already cd'd into databricks/).
+BUNDLE_NAME="$(awk '/^bundle:/{found=1;next} found && /name:/{print $2;exit}' databricks.yml)"
+BUNDLE_DIR="/Workspace/.bundle/${BUNDLE_NAME}/${ENV}"
+sp_var="DBX_$(echo "${ENV}" | tr '[:lower:]' '[:upper:]')_SP_CLIENT_ID"
+SP_CLIENT_ID="${!sp_var:-}"
+if [ -n "${SP_CLIENT_ID}" ]; then
+  echo "Granting SP ${SP_CLIENT_ID} CAN_RUN on ${BUNDLE_DIR}"
+  # Run workspace commands from repo root to avoid the CLI picking up
+  # databricks.yml and requiring a bundle target.
+  OBJ_ID="$(cd "${ROOT}" && databricks workspace get-status "${BUNDLE_DIR}" -o json | python3 -I -c 'import sys,json; print(json.load(sys.stdin)["object_id"])')"
+  cd "${ROOT}" && databricks workspace update-permissions directories "${OBJ_ID}" \
+    --json "{\"access_control_list\":[{\"service_principal_name\":\"${SP_CLIENT_ID}\",\"permission_level\":\"CAN_RUN\"}]}" \
+    || echo "WARNING: could not set workspace permissions — grant manually in the Databricks UI"
+else
+  echo "WARNING: DBX_SP_CLIENT_ID not set — skipping workspace permission grant"
+fi
