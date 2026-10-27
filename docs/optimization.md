@@ -34,6 +34,18 @@ the current workaround (if any), and the proper fix.
 - **Workaround:** Custom `_SdkContextLoader` and `_SdkMessageWriter` in `entrypoint.py` that use `WorkspaceClient().files` (REST API) instead of FUSE. `rest_api.py` also uses the SDK for file writes. The notebook inherits the SP identity via `WorkspaceClient()` (no explicit credentials).
 - **Proper fix:** If Databricks adds FUSE support to Azure serverless, switch back to the built-in `PipesUnityCatalogVolumes*` classes. Alternatively, investigate `spark_python_task` + `environment_key` (cleaner script format, explicit dependencies) once FUSE or an official SDK-based Pipes transport is available.
 
+### AKS IP whitelisting adds ~4 min to deploy workflows
+- **Discovered:** Phase 5 deploy-stage debugging
+- **Symptom:** `az aks update` to add/remove the GitHub runner IP takes ~2 min each way, and the API server may not be reachable for up to 2 min after the update completes (propagation delay).
+- **Workaround:** A retry loop polls `kubectl cluster-info` after the IP update until the API server responds (up to 3 min), then proceeds with helm. The cleanup step restores original IPs with `if: always()`.
+- **Proper fix:** Use [`az aks command invoke`](https://learn.microsoft.com/en-us/azure/aks/access-private-cluster) to run helm/kubectl through the Azure API, bypassing the network entirely. This is Microsoft's recommended approach for CI/CD with restricted AKS clusters. Requires packaging values files for upload via `--file`. For corporate environments, self-hosted runners on the VNet eliminate the problem entirely (see [corporate-migration.md](corporate-migration.md)).
+
+### Databricks CI/CD uses azure-cli auth instead of github-oidc
+- **Discovered:** Phase 5 deploy-stage debugging
+- **Symptom:** Not a bug — the current setup works. But `azure-cli` auth requires the OIDC SP to be manually added as a Databricks workspace user, and piggybacks on the Azure Login session.
+- **Workaround:** Manually add the SP to each workspace via `databricks service-principals create`.
+- **Proper fix:** Switch to [Databricks workload identity federation](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/auth/provider-github) (`DATABRICKS_AUTH_TYPE: github-oidc`). This uses GitHub's OIDC token directly with Databricks, requires no Azure Login for bundle steps, and is [Databricks' recommended approach](https://learn.microsoft.com/en-us/azure/databricks/developers/best-practices) for CI/CD. Setup: create a federation policy on the Databricks SP with issuer `https://token.actions.githubusercontent.com` and subject scoped to the repo/environment.
+
 ## Scaling considerations
 
 Items to investigate before running concurrent workloads. Not blocking the POC.
