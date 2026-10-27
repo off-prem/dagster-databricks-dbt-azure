@@ -223,6 +223,18 @@ resource "azurerm_role_assignment" "aks_cluster_admin" {
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
+data "azuread_service_principal" "github" {
+  count     = var.github_sp_client_id != "" ? 1 : 0
+  client_id = var.github_sp_client_id
+}
+
+resource "azurerm_role_assignment" "aks_cluster_admin_github" {
+  count                = var.github_sp_client_id != "" ? 1 : 0
+  scope                = azurerm_kubernetes_cluster.this.id
+  role_definition_name = "Azure Kubernetes Service RBAC Cluster Admin"
+  principal_id         = data.azuread_service_principal.github[0].object_id
+}
+
 # ── AKS egress IP lookup ─────────────────────────────────────────────────────
 # When AKS pods make outbound requests (to Postgres, Key Vault, etc.) they
 # appear to come from the cluster's "egress" public IP. We need to know this
