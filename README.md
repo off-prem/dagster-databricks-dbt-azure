@@ -8,19 +8,28 @@ Stage and prod environments; CI promotes merged PRs through them.
 **[System overview](docs/)** — architecture, data flow, and links to every
 tool, resource, and concept in one page.
 
-**[Setup guide](docs/guide.md)** — step-by-step from fresh clone to fully running,
-with `just verify <phase>` gates between phases.
+## Two ways to use this repo
 
-**[Adoption plan](docs/adoption-plan.md)** — phased plan for moving this POC into
-production with team ownership, migration strategy, and developer experience.
+### Fork it
+
+Clone or fork and follow the [setup guide](docs/guide.md) — step-by-step from fresh
+clone to running system. Best when starting from scratch.
+
+### Adopt into an existing repo
+
+Pull specific components (Terraform, Helm, dbt, CI/CD) into your team's codebase.
+Read **[docs/adapt.md](docs/adapt.md)** for the component map and intake questions.
+Use Claude with access to both repos to generate a tailored adoption plan.
+See the [example plan](docs/adoption-plan-example.md) for what the output looks like.
 
 ## Docs
 
 | Doc | What it covers |
 |-----|----------------|
 | [docs/](docs/) | **System overview** — architecture, every tool/resource/concept with links |
-| [guide.md](docs/guide.md) | End-to-end setup walkthrough (start here) |
-| [adoption-plan.md](docs/adoption-plan.md) | POC → production: phases, team ownership, migration strategy |
+| [guide.md](docs/guide.md) | End-to-end setup walkthrough (fork path) |
+| [adapt.md](docs/adapt.md) | Component map, intake questions, and Claude instructions (adopt path) |
+| [adoption-plan-example.md](docs/adoption-plan-example.md) | Example adoption plan (Synapse/ADF migration) |
 | [architecture.md](docs/architecture.md) | System diagram, data flow, identity flow |
 | [costs.md](docs/costs.md) | Monthly cost breakdown and scope |
 | [decisions.md](docs/decisions.md) | Design rationale and trade-offs |

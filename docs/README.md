@@ -67,11 +67,12 @@ dbt runs inside the Dagster run pod against a serverless SQL warehouse.
 | [corporate-migration.md](corporate-migration.md) | What changes in a corporate network |
 | [improvements.md](improvements.md) | TODO tracker: security, performance, scaling, monitoring |
 
-### Production adoption
+### Adopting this repo
 
 | Doc | Purpose |
 |-----|---------|
-| [adoption-plan.md](adoption-plan.md) | Phased plan: POC → production, team ownership, migration strategy |
+| [adapt.md](adapt.md) | Component map, intake questions, and Claude instructions for adopting into an existing repo |
+| [adoption-plan-example.md](adoption-plan-example.md) | Example adoption plan (Synapse/ADF migration, 30+ person team) |
 
 ### Reference pages
 

@@ -1,4 +1,8 @@
-# Adoption plan: POC → production
+# Adoption plan example: Synapse/ADF migration
+
+> This is an **example** adoption plan generated from the [adapt.md](adapt.md) intake
+> process. It shows what a tailored plan looks like for a specific team and context.
+> Your plan will be different — use `docs/adapt.md` to generate one for your situation.
 
 How to move from this POC to a production data platform supporting migration off
 Synapse/ADF. The goal is to get a functioning system as fast as possible so data
