@@ -2,7 +2,7 @@
 
 What changes when this moves from a personal subscription into the company's Security/IT/Networking
 constraints. The design goal of the POC was that every row below is **infrastructure config**, not
-application code.
+application code. Actionable items from this page are tracked in [improvements.md](improvements.md).
 
 ## Expected constraints and responses
 
