@@ -521,24 +521,62 @@ verify_5() {
   echo "Workflows:"
   for wf in pr-checks deploy-stage promote-prod; do
     if [ -f "${ROOT}/.github/workflows/${wf}.yml" ]; then
-      pass "${wf}.yml activated"
+      if grep -q "TODO" "${ROOT}/.github/workflows/${wf}.yml" 2>/dev/null; then
+        warn "${wf}.yml still has TODO stubs"
+      else
+        pass "${wf}.yml activated"
+      fi
     else
       fail "${wf}.yml not in .github/workflows/"
     fi
   done
 
   echo ""
-  echo "GitHub environments:"
+  echo "GitHub variables:"
   local repo
   repo="$(grep "^TF_VAR_github_repo=" "${ROOT}/.env" 2>/dev/null | head -1 | cut -d'"' -f2)"
-  if [ -n "${repo}" ]; then
+  if [ -n "${repo}" ] && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    local var_count
+    var_count="$(gh variable list --repo "${repo}" --json name --jq 'length' 2>/dev/null || echo 0)"
+    if [ "${var_count}" -ge 15 ]; then
+      pass "${var_count} repository variables set"
+    elif [ "${var_count}" -gt 0 ]; then
+      warn "Only ${var_count} repository variables set (expected ~18). Run: just setup-ci"
+    else
+      fail "No repository variables set. Run: just setup-ci"
+    fi
+
+    for required_var in AZURE_CLIENT_ID ACR_NAME PG_FQDN DBX_STAGE_HOST DBX_PROD_HOST; do
+      if gh variable list --repo "${repo}" --json name --jq ".[].name" 2>/dev/null | grep -qx "${required_var}"; then
+        pass "${required_var} set"
+      else
+        fail "${required_var} not set"
+      fi
+    done
+  else
+    warn "Cannot check variables — gh not authenticated or TF_VAR_github_repo blank"
+  fi
+
+  echo ""
+  echo "GitHub environments:"
+  if [ -n "${repo}" ] && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     for env_name in stage prod; do
       if gh api "repos/${repo}/environments/${env_name}" >/dev/null 2>&1; then
         pass "Environment '${env_name}' exists"
       else
-        fail "Environment '${env_name}' not found"
+        fail "Environment '${env_name}' not found — run: just setup-ci"
       fi
     done
+
+    local prod_reviewers
+    prod_reviewers="$(gh api "repos/${repo}/environments/prod" --jq '.protection_rules[]? | select(.type == "required_reviewers") | .reviewers[]?.reviewer.login' 2>/dev/null || true)"
+    if [ -n "${prod_reviewers}" ]; then
+      pass "prod has required reviewer(s): ${prod_reviewers}"
+    else
+      warn "prod environment has no required reviewers — add one in Settings → Environments → prod"
+    fi
+  else
+    warn "Cannot check environments — gh not authenticated or TF_VAR_github_repo blank"
   fi
 
   summary 5

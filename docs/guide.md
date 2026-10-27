@@ -721,14 +721,42 @@ just verify 4
 
 See [CI/CD](concepts/cicd.md) for the full workflow architecture.
 
-### 5.1–5.3 Activate workflows
+### 5.1 Sync GitHub variables and environments ✅
+
+The workflows read configuration from **GitHub repository variables** (not secrets — these
+are non-sensitive IDs and URLs). `scripts/setup-ci.sh` reads your `.env` and pushes
+everything CI needs in one shot. It also creates the `stage` and `prod` GitHub environments,
+with you as the required reviewer for `prod`.
 
 ```bash
-git mv ci/pending-workflows/deploy-stage.yml .github/workflows/
-git mv ci/pending-workflows/promote-prod.yml .github/workflows/
-git add .github/workflows/
-git commit -m "ci: activate deploy and promote workflows"
+just setup-ci --dry-run   # preview what will be set
+just setup-ci             # sync .env → GitHub variables + create environments
 ```
+
+Re-run any time after a terraform apply adds new values to `.env`.
+
+**Verify:** `gh variable list` should show ~18 variables. Settings → Environments should
+show `stage` and `prod` (with your username under required reviewers for `prod`).
+
+### 5.2–5.3 Activate workflows ✅
+
+Workflow skeletons replaced with full implementations and moved to `.github/workflows/`:
+
+- **pr-checks.yml** — terraform fmt/validate, bundle validate, dbt parse, dg check defs,
+  pytest, docker build (no push)
+- **deploy-stage.yml** — `az acr build` → helm upgrade (stage) → bundle deploy (stage) →
+  smoke test
+- **promote-prod.yml** — same image SHA → helm upgrade (prod) → bundle deploy (prod) →
+  smoke test; requires `environment: prod` approval
+
+All workflows authenticate via OIDC (`azure/login@v2`) using GitHub repository variables.
+Scripts get a stub `.env` (`touch .env`) so `load-env.sh` doesn't fail when vars come from
+the CI environment.
+
+**Pushing workflow files** requires the `workflow` scope on your GitHub token. If `git push`
+is rejected with "refusing to allow an OAuth App to create or update workflow," either push
+via SSH (`git remote set-url origin git@github.com:<org>/<repo>.git`) or refresh your token
+with `gh auth refresh -s workflow --web=false`.
 
 ### 5.4 First prod promotion
 

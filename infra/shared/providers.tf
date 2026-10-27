@@ -43,6 +43,6 @@ terraform {
 # subscription_id tells it which Azure subscription to create resources in.
 provider "azurerm" {
   features {}
-  subscription_id      = var.subscription_id
-  storage_use_azuread  = true   # use Azure AD (not shared keys) for storage data plane
+  subscription_id     = var.subscription_id
+  storage_use_azuread = true # use Azure AD (not shared keys) for storage data plane
 }
