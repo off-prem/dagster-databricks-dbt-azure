@@ -40,16 +40,19 @@ See `docs/adoption-plan-example.md` for an example of the output.
 - `databricks/` — Databricks Asset Bundle (extract notebook + `sources.yml`; no pipeline resources), targets `stage`/`prod`
 - `dbt/` — dbt project targeting a Databricks SQL warehouse
 - `deploy/helm/` — Dagster Helm values (base + per env); `deploy/k8s/` — SecretProviderClass etc.
-- `scripts/` — setup-tools, setup-env/load-env, setup-ci, helm-upgrade, bundle-deploy, stop/start, teardown/standup, smoke test, port-forward
+- `scripts/phases/` — phase runners (`phase-0.sh` through `phase-5.sh`): guided setup, one per phase
+- `scripts/lib/common.sh` — shared functions for phase runners (output, verification, TF workflow, manual step helpers)
+- `scripts/` — setup-tools, setup-env/load-env, setup-ci, helm-upgrade, bundle-deploy, stop/start, teardown/standup, smoke test, port-forward, verify
 - `.github/workflows/` — pr-checks, deploy-stage, promote-prod (active)
 
 ## Key commands
 ```
+just phase 0                               # run phase 0 (accounts, tools, bootstrap)
+just phase 1                               # run phase 1 (shared infrastructure)
+just phase 2                               # ... (re-running skips completed steps)
 source scripts/load-env.sh                 # load .env (just does this automatically)
-scripts/setup-env.sh                       # detect Phase 0 values, scaffold all future keys
+scripts/setup-env.sh --interactive         # detect values + prompt for project name/region
 scripts/setup-env.sh collect-tf shared     # capture terraform outputs into .env
-scripts/setup-env.sh collect-bundle stage  # print the bundle root (no .env key written)
-terraform -chdir=infra/env init && terraform -chdir=infra/env plan -var-file=stage.tfvars
 scripts/helm-upgrade.sh stage              # helm upgrade with per-user values from .env
 scripts/bundle-deploy.sh stage             # bundle deploy with DATABRICKS_HOST from .env
 dbt build --target stage                   # from dbt/ (reads env vars via profiles.yml)
@@ -66,7 +69,7 @@ scripts/verify.sh 0                        # verify phase 0 is complete (0-5)
 ## Current state
 <!-- Update after every phase. A fresh session reads this first. -->
 - Phase: 5 (complete)
-- Steps with ✅ in `docs/guide.md`: 0.1–0.9, 1.1–1.4, 2.1–2.11, 3.1–3.3, 4.1–4.6, 5.1–5.7
+- All phases complete (0–5). Phase runners (`just phase <N>`) skip completed steps on re-run.
 - Next step: Phase 6 (optional) — record costs, corporate migration prep, workload identity federation
 - Known blockers: none
 - Values collected: ACR_NAME, PG_FQDN, KV_NAME, STORAGE_ACCOUNT_NAME, AKS_EGRESS_IP in `.env`
