@@ -56,13 +56,23 @@ Same shape as stage with `prod` substituted. No additional fixed cost.
 
 | Resource | Name | Purpose | Est. $/mo | Stop/start? |
 |----------|------|---------|-----------|-------------|
-| GitHub Actions (Free tier) | hosted runners | PR checks, deploy-stage, promote-prod | 0 | — |
+| GitHub Actions (Free tier) | — | PR checks (hosted runners, free tier) | 0 | — |
+| ARC controller + listener | 2 pods in `arc-systems` namespace | Manages runner lifecycle; always running, ~200m CPU / 256Mi total | 0 (on existing node) | Stops/starts with AKS |
+| ARC runner scale set | pods in `arc-runners` namespace | Ephemeral runner pods for deploy-stage and promote-prod; scale from 0 | 0 (on existing node) | Scale to zero when idle |
+| GitHub App or PAT | — | ARC authenticates to GitHub to pick up jobs | 0 | — |
+
+Self-hosted runners have no per-minute GitHub Actions charges. The ARC controller
+and listener add ~200m CPU and ~256Mi memory to the AKS node baseline. Runner pods
+are ephemeral (exist only during a workflow run, ~5–10 min) and need ~500m CPU / 1Gi
+memory. All run on the existing AKS node with no incremental Azure cost.
+
+See [decision #16](decisions.md) for why ARC was chosen over GitOps and hosted runners.
 
 ### Not provisioned (explicitly out of scope)
 
 VPN gateway, Bastion, private endpoints, private DNS zones, ACR Premium, NAT gateway,
 VNet-injected Databricks, second AKS cluster, Postgres HA, Container Insights, Dagster+,
-self-hosted runner (until IP access lists block hosted runners), Log Analytics.
+Log Analytics.
 
 ## Databricks compute costs (DBUs billed via Azure)
 
@@ -76,7 +86,8 @@ New workspaces get a 14-day Premium trial with free DBUs; serverless bundles com
 the DBU, so Databricks is ~$0 for the first two weeks.
 
 ## GitHub
-Free tier; hosted runners (nothing private yet). $0.
+Free tier for PR checks (hosted runners). Deploy and promote workflows use self-hosted
+runners via ARC on the existing AKS cluster — no per-minute charges. $0.
 
 ## Cost model
 

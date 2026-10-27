@@ -32,6 +32,10 @@ collect-bundle env:
 show-env:
     @scripts/setup-env.sh show
 
+# Install ARC self-hosted runners on AKS (idempotent; teardown: just setup-arc teardown)
+setup-arc *ARGS:
+    scripts/setup-arc.sh {{ ARGS }}
+
 # Sync .env to GitHub repo variables + create environments for CI/CD
 setup-ci *ARGS:
     scripts/setup-ci.sh {{ ARGS }}

@@ -71,6 +71,11 @@ scaffold_future_keys() {
   env_scaffold DBX_STAGE_WAREHOUSE_HTTP_PATH ""
   env_scaffold DAGSTER_STAGE_IDENTITY_CLIENT_ID ""
 
+  # Phase 5 — CI/CD (ARC)
+  section="Phase 5 — ARC self-hosted runners (guide step 5.3)"
+  env_scaffold ARC_GITHUB_APP_ID "${section}"
+  env_scaffold ARC_GITHUB_APP_INSTALLATION_ID ""
+
   # Phase 4 — prod
   section="Phase 4 — prod environment"
   env_scaffold DBX_PROD_HOST "${section}"

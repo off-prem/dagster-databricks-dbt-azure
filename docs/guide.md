@@ -769,17 +769,66 @@ The deploy workflows need the GitHub OIDC service principal to have:
 **Verify:** `terraform plan` on the shared stack shows no changes. Both Databricks
 workspace Settings → Identity and access → Service principals show `app-dagster-github`.
 
-### 5.3–5.4 Activate workflows ✅
+### 5.3 Create GitHub App for ARC ✅
 
-Workflow skeletons replaced with full implementations and moved to `.github/workflows/`:
+ARC authenticates to GitHub via a GitHub App (preferred over PAT — scoped, auditable, no
+expiry rotation). Create it once per GitHub org/account.
+
+1. **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**
+   - Name: `arc-runner-<project>` (e.g. `arc-runner-dagster`)
+   - Homepage URL: your repo URL
+   - Uncheck "Webhook → Active"
+   - Permissions → Repository: **Administration: Read & Write**, **Metadata: Read-only**
+   - Permissions → Organization: **Self-hosted runners: Read & Write**
+   - Where can this be installed: **Only on this account**
+   - Create, then **Install** on the repo
+2. Generate a private key (Settings → Private keys → Generate) — downloads a `.pem` file
+3. Record the App ID and Installation ID (Settings → Installations → click → URL shows the ID)
+4. Store the private key in Key Vault:
+
+   ```bash
+   source scripts/load-env.sh
+   az keyvault secret set --vault-name "${KV_NAME}" \
+     --name arc-github-app-key \
+     --file <path-to-downloaded-pem-file>
+   ```
+
+5. Add the IDs to `.env`:
+
+   ```bash
+   scripts/setup-env.sh set ARC_GITHUB_APP_ID <app-id>
+   scripts/setup-env.sh set ARC_GITHUB_APP_INSTALLATION_ID <installation-id>
+   ```
+
+### 5.4 Install ARC on AKS ✅
+
+ARC (Actions Runner Controller) runs self-hosted GitHub Actions runners inside AKS.
+Runner pods have direct API server access and egress through the AKS public IP (already
+on the Databricks allow list). No IP whitelisting needed. See [decision #16](decisions.md).
+
+```bash
+source scripts/load-env.sh
+az aks get-credentials --resource-group "rg-${TF_VAR_project}-shared" \
+  --name "aks-${TF_VAR_project}" --overwrite-existing
+scripts/setup-arc.sh
+```
+
+**Verify:** `kubectl get pods -n arc-systems` shows controller + listener Running.
+`kubectl get pods -n arc-runners` is empty (scale-to-zero; runners spawn on workflow trigger).
+
+The script is idempotent — `standup.sh` calls it automatically after cluster recreate.
+To remove ARC: `scripts/setup-arc.sh teardown`.
+
+### 5.5 Activate workflows ✅
+
+Workflow skeletons replaced with full implementations in `.github/workflows/`:
 
 - **pr-checks.yml** — terraform fmt/validate, bundle validate, dbt parse, dg check defs,
-  pytest, docker build (no push)
-- **deploy-stage.yml** — `az acr build` → temporarily whitelist runner IP on AKS →
-  helm upgrade (stage) → bundle deploy (stage) → smoke test → restore AKS IP ranges
-- **promote-prod.yml** — same image SHA → temporarily whitelist runner IP on AKS →
-  helm upgrade (prod) → bundle deploy (prod) → smoke test → restore AKS IP ranges;
-  requires `environment: prod` approval
+  pytest, docker build (no push). Runs on GitHub-hosted runners (read-only, no IP issues).
+- **deploy-stage.yml** — runs on ARC (`runs-on: arc-runner-set`): `az acr build` →
+  helm upgrade (stage) → bundle deploy (stage) → smoke test
+- **promote-prod.yml** — runs on ARC: same image SHA → helm upgrade (prod) →
+  bundle deploy (prod) → smoke test; requires `environment: prod` approval
 
 All workflows authenticate via OIDC (`azure/login@v2`) using GitHub repository variables.
 Scripts get a stub `.env` (`touch .env`) so `load-env.sh` doesn't fail when vars come from
@@ -790,12 +839,12 @@ is rejected with "refusing to allow an OAuth App to create or update workflow," 
 via SSH (`git remote set-url origin git@github.com:<org>/<repo>.git`) or refresh your token
 with `gh auth refresh -s workflow --web=false`.
 
-### 5.5 First prod promotion
+### 5.6 First prod promotion
 
 Push a trivial PR. After merge: `deploy-stage` runs automatically → `promote-prod` waits
 for your approval in GitHub → Actions → **Review deployments** → **Approve and deploy**.
 
-### 5.6 Harden
+### 5.7 Harden
 
 - Restrict the Entra app's RBAC to just the three resource groups + ACR + AKS
 - Copy `.github/CODEOWNERS.example` to `.github/CODEOWNERS`
