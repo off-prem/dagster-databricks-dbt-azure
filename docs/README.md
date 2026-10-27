@@ -114,4 +114,4 @@ A new tool, resource or concept gets a page here and a row below.
 
 [architecture](architecture.md) · [costs](costs.md) · [conventions](conventions.md) ·
 [decisions](decisions.md) · [corporate migration](corporate-migration.md) ·
-[optimization](optimization.md) · [Pipes on Azure gotchas](dagster-pipes-azure-gotchas.md)
+[improvements](improvements.md)

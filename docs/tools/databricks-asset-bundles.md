@@ -58,5 +58,5 @@ Deployed by `scripts/bundle-deploy.sh` (local) and the deploy workflows (CI).
 
 - [Databricks CLI](databricks-cli.md): the deploy tool
 - [Dagster Pipes](../concepts/dagster-pipes.md): how Dagster runs the shipped code
-- [Dagster Pipes Azure gotchas](../dagster-pipes-azure-gotchas.md)
+
 - [Promote, don't rebuild](../concepts/cicd.md): bundles are deployed at the same SHA to prod

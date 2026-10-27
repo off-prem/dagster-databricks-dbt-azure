@@ -23,8 +23,8 @@ in the lineage graph.
 6. [dbt](../tools/dbt.md) reads those files in `bronze_posts`.
 
 Because Azure serverless has no FUSE mount for `/Volumes`, the notebook uses custom context-loader and
-message-writer classes that call the Files REST API. Details and other deviations from the official guide are in
-[Dagster Pipes Azure gotchas](../dagster-pipes-azure-gotchas.md).
+message-writer classes that call the Files REST API (`_SdkContextLoader` and `_SdkMessageWriter` in
+`entrypoint.py`). See Gotchas below for all deviations from the official Dagster Pipes docs.
 
 ## Key commands & files
 
@@ -36,10 +36,17 @@ Files: `assets/extract.py` (Dagster side), `entrypoint.py` and `rest_api.py` (Da
 
 ## Gotchas
 
-- The service principal needs `CAN_RUN` on the bundle directory, and `READ_VOLUME`/`WRITE_VOLUME` on `bronze`.
-- `pipes.get_extra(key)` takes one argument and raises `KeyError` when absent.
-- The API secret is passed in extras, so it appears in the Databricks job context. Treat the volume and job run as sensitive.
-- [Decision 5](../decisions.md) records the switch from an SDP pipeline to Pipes.
+Deviations from the [official Dagster Pipes serverless guide](https://dagster.io/docs/integrations/libraries/databricks/pipes/serverless-compute) on Azure:
+
+1. **No FUSE on Azure serverless.** `PipesUnityCatalogVolumesContextLoader`/`MessageWriter` use `open("/Volumes/...")` which fails with `FileNotFoundError`. Custom `_SdkContextLoader` and `_SdkMessageWriter` use `WorkspaceClient().files` (REST API) instead. If Databricks adds FUSE to Azure serverless, switch back to the built-in classes.
+2. **Bundle strips `.py` from notebooks.** `databricks bundle deploy` imports `.py` files with the `# Databricks notebook source` header as notebooks and drops the extension. Use `notebook_path` without `.py`. Non-notebook files (like `rest_api.py`) keep the extension.
+3. **`get_extra()` takes exactly one argument.** `pipes.get_extra("key", None)` raises `TypeError`. Wrap optional extras in `try/except KeyError`.
+4. **`SubmitTask.from_dict()` needs SDK objects for environments.** Environment entries must be `jobs.JobEnvironment.from_dict({...})` objects, not raw dicts. Not relevant for `notebook_task`.
+5. **SP needs `CAN_RUN` on the bundle directory.** `scripts/bundle-deploy.sh` grants this automatically after each deploy.
+6. **SP needs `CREATE_SCHEMA` on the catalog for dbt.** Added in `infra/env/databricks.tf` grants.
+7. **`%pip install` needed in the notebook.** Serverless doesn't have `dagster-pipes` pre-installed; the notebook uses a `%pip install` cell.
+8. The API secret is passed in extras, so it appears in the Databricks job context. Treat the volume and job run as sensitive.
+9. [Decision 5](../decisions.md) records the switch from an SDP pipeline to Pipes.
 
 ## Cost
 

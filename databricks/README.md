@@ -13,4 +13,4 @@ Deploy with `scripts/bundle-deploy.sh <env>` (sets `DATABRICKS_HOST` from `.env`
 CI runs `databricks bundle validate -t stage` as a non-blocking check (it needs workspace access).
 
 See [docs/tools/databricks-asset-bundles.md](../docs/tools/databricks-asset-bundles.md) and
-[docs/dagster-pipes-azure-gotchas.md](../docs/dagster-pipes-azure-gotchas.md).
+[docs/concepts/dagster-pipes.md](../docs/concepts/dagster-pipes.md).
