@@ -102,6 +102,21 @@ jobs:
         run: |
           curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
 
+      - name: Allow runner IP on Databricks workspace
+        id: dbx-ip
+        run: |
+          RUNNER_IP="${{ steps.aks-ip.outputs.runner_ip }}"
+          LIST_ID=$(databricks ip-access-lists create \
+            --label "ci-runner-${GITHUB_RUN_ID}" \
+            --list-type ALLOW \
+            --ip-addresses "${RUNNER_IP}" \
+            --output json | jq -r '.ip_access_list.list_id')
+          echo "list_id=${LIST_ID}" >> "$GITHUB_OUTPUT"
+          echo "Allowed runner IP ${RUNNER_IP} on Databricks (list ${LIST_ID})"
+        env:
+          DATABRICKS_HOST: ${{ vars.DBX_STAGE_HOST }}
+          DATABRICKS_AUTH_TYPE: azure-cli
+
       - name: Bundle deploy (stage)
         run: scripts/bundle-deploy.sh stage
         env:
@@ -114,7 +129,16 @@ jobs:
         env:
           TF_VAR_project: ${{ env.TF_VAR_project }}
 
-      # ── Cleanup: restore original AKS authorized IPs ────────────────────
+      # ── Cleanup ──────────────────────────────────────────────────────────
+      - name: Remove runner IP from Databricks workspace
+        if: always() && steps.dbx-ip.outputs.list_id
+        run: |
+          databricks ip-access-lists delete "${{ steps.dbx-ip.outputs.list_id }}"
+          echo "Removed CI runner IP access list"
+        env:
+          DATABRICKS_HOST: ${{ vars.DBX_STAGE_HOST }}
+          DATABRICKS_AUTH_TYPE: azure-cli
+
       - name: Remove runner IP from AKS API server
         if: always() && steps.aks-ip.outputs.original_ranges
         run: |
