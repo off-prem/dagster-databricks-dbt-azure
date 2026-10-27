@@ -166,18 +166,31 @@ it provides to other components.
 - `scripts/setup-env.sh` and `scripts/load-env.sh` handle the `.env` ↔ CI environment
   variable bridge. This pattern is worth adopting regardless.
 
-### Scripts (`scripts/`)
+### Phase runners and scripts (`scripts/`)
 
-| Script | Adopt if |
-|--------|----------|
-| `setup-env.sh` / `load-env.sh` | You need the `.env` scaffolding and Terraform output collection pattern |
-| `helm-upgrade.sh` | You deploy Dagster via Helm (envsubst pattern is the key) |
-| `bundle-deploy.sh` | You use Databricks Asset Bundles |
-| `smoke-test.sh` | You want post-deploy validation via GraphQL |
-| `stop.sh` / `start.sh` / `teardown.sh` / `standup.sh` | You want cost control scripts |
-| `setup-ci.sh` | You need to sync local .env to GitHub repo variables |
-| `setup-arc.sh` | You use ARC for self-hosted runners |
-| `verify.sh` | You follow the phased setup guide |
+| Component | What it does | Adopt if |
+|-----------|-------------|----------|
+| `scripts/phases/phase-*.sh` | Guided, self-verifying setup (one command per phase) | You want the `just phase N` experience for your adopters |
+| `scripts/lib/common.sh` | Shared library: colored output, `tf_plan_confirm_apply`, `wait_for_manual`, provider registration, phase summary | You adopt the phase runners, or want the patterns for your own scripts |
+| `justfile` | Task runner with dotenv-load, phase commands, dbt/Helm/bundle wrappers | You want a single entry point for all commands |
+| `setup-env.sh` / `load-env.sh` | `.env` scaffolding, Terraform output collection, interactive project naming | You need the `.env` ↔ CI variable bridge |
+| `helm-upgrade.sh` | Helm deploy with envsubst | You deploy Dagster via Helm |
+| `bundle-deploy.sh` | Bundle deploy + permission grants | You use Databricks Asset Bundles |
+| `smoke-test.sh` | Post-deploy validation via Dagster GraphQL | You want automated post-deploy checks |
+| `stop.sh` / `start.sh` / `teardown.sh` / `standup.sh` | Cost control: pause, teardown, rebuild | You want cost control scripts |
+| `setup-ci.sh` | Sync local `.env` to GitHub repo variables + create environments | You use GitHub Actions CI |
+| `setup-arc.sh` | Install ARC self-hosted runners on AKS | You need self-hosted runners inside AKS |
+| `verify.sh` | Read-only phase verification (check a phase is healthy) | You follow the phased setup guide |
+
+**Adoption notes:**
+- The phase runner pattern (`just phase N`) is the primary setup experience. If you adopt
+  the infra and deploy patterns, consider adopting the phase runners too — they eliminate
+  manual errors and make setup reproducible.
+- `lib/common.sh` contains reusable functions (`tf_plan_confirm_apply`, `wait_for_manual`,
+  colored output) that work independently of the phase runners. You can source it from
+  your own scripts.
+- The `justfile` loads `.env` automatically. If you already use `make` or another task
+  runner, translate the recipes rather than running both.
 
 ---
 
