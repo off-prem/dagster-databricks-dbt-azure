@@ -63,6 +63,12 @@ variable "pg_version" {
   description = "Postgres major version"
 }
 
+variable "github_sp_client_id" {
+  type        = string
+  default     = ""
+  description = "Client ID of the GitHub Actions OIDC service principal — granted AKS RBAC Cluster Admin so CI can run helm/kubectl"
+}
+
 variable "access_connector_id_stage" {
   type        = string
   default     = ""

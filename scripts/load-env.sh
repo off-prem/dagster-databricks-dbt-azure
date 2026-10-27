@@ -10,4 +10,7 @@ set -a
 # shellcheck disable=SC1091
 . "${_root}/.env"
 set +a
+
+export TF_VAR_github_sp_client_id="${AZURE_CLIENT_ID:-}"
+
 unset _root
