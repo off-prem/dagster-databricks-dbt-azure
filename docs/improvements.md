@@ -17,6 +17,17 @@ Mark items ~~strikethrough~~ when resolved (with a note on the resolution).
   This can be done in Terraform (`databricks_workspace_binding` resource) or via `infra/env` with per-workspace variables.
 - **See also:** [Decision #13](decisions.md) (one metastore, catalog-per-env)
 
+### Scope CI service principal RBAC to resource groups
+- **Status:** TODO (deferred from guide step 5.7)
+- **Problem:** The GitHub OIDC SP (`app-dagster-github`) has Contributor + User Access Administrator at subscription scope. Should be scoped to the four dagster resource groups (`rg-dagster-tfstate`, `rg-dagster-shared`, `rg-dagster-stage`, `rg-dagster-prod`).
+- **Complexity:** The role assignments live in `infra/bootstrap/main.tf` (lines 99–109), which runs before the resource groups exist. Either move them to `infra/shared`/`infra/env` or do a two-pass bootstrap.
+- **See also:** [Azure RBAC concept](concepts/azure-rbac.md)
+
+### CODEOWNERS
+- **Status:** TODO (deferred from guide step 5.7)
+- **Problem:** No code review requirements. `.github/CODEOWNERS.example` exists but isn't active.
+- **Fix:** Copy to `.github/CODEOWNERS`, fill in team handles, enable branch protection on `main`.
+
 ### Databricks CI/CD auth: switch to GitHub OIDC
 - **Status:** TODO
 - **Problem:** `azure-cli` auth requires the OIDC SP to be manually added as a Databricks workspace user, and piggybacks on the Azure Login session.

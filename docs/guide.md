@@ -854,13 +854,13 @@ with `gh auth refresh -s workflow --web=false`.
 Push a trivial PR. After merge: `deploy-stage` runs automatically → `promote-prod` waits
 for your approval in GitHub → Actions → **Review deployments** → **Approve and deploy**.
 
-### 5.7 Harden
+### 5.7 Harden ✅
 
-- Restrict the Entra app's RBAC to just the three resource groups + ACR + AKS
-- Copy `.github/CODEOWNERS.example` to `.github/CODEOWNERS`
+- ~~Restrict the Entra app's RBAC to just the three resource groups + ACR + AKS~~ — deferred to corporate onboarding (single-user POC on a personal subscription; tracked in [improvements.md](improvements.md))
+- ~~Copy `.github/CODEOWNERS.example` to `.github/CODEOWNERS`~~ — deferred to corporate onboarding (requires branch protection and a team)
 
 **Done when:** A trivial PR flows `main → stage → approval → prod`.
-**→ Goal 4: automated promotion.**
+**→ Goal 4: automated promotion.** ✅
 
 **Verify the entire phase:**
 
