@@ -85,7 +85,7 @@ jobs:
       # ── Bundle deploy to prod (same SHA) ─────────────────────────────────
       - name: Install Databricks CLI
         run: |
-          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sudo sh
 
       - name: Bundle deploy (prod)
         run: scripts/bundle-deploy.sh prod
