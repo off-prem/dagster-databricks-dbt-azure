@@ -48,19 +48,23 @@ Triggered when a PR is merged:
 
 1. `az acr build` — builds and pushes the Docker image tagged with the git SHA
 2. `az aks get-credentials` — gets [AKS](../resources/aks.md) access
-3. `helm upgrade --install` — deploys Dagster to stage with the new image tag
-4. `databricks bundle deploy -t stage` — deploys/updates the SDP pipeline
-5. `scripts/smoke-test.sh stage` — launches both assets via GraphQL, polls to success
+3. Temporarily adds the runner IP to AKS authorized IP ranges
+4. `helm upgrade --install` — deploys Dagster to stage with the new image tag
+5. `databricks bundle deploy -t stage` — deploys/updates the SDP pipeline
+6. `scripts/smoke-test.sh stage` — launches both assets via GraphQL, polls to success
    (20-minute timeout)
+7. Restores original AKS authorized IP ranges
 
 ### `promote-prod.yml` (after deploy-stage succeeds)
 
 Triggered by `deploy-stage` success, with `environment: prod` (requires your approval):
 
 1. Resolves the `<sha>` from the triggering run
-2. `helm upgrade --install` — deploys to prod with the **same image SHA** (no rebuild)
-3. `databricks bundle deploy -t prod` — at the same git SHA
-4. `scripts/smoke-test.sh prod` — verifies prod is working
+2. Temporarily adds the runner IP to AKS authorized IP ranges
+3. `helm upgrade --install` — deploys to prod with the **same image SHA** (no rebuild)
+4. `databricks bundle deploy -t prod` — at the same git SHA
+5. `scripts/smoke-test.sh prod` — verifies prod is working
+6. Restores original AKS authorized IP ranges
 
 ### Concurrency
 
@@ -73,12 +77,19 @@ so only one deploy runs at a time per environment.
 - **Bundle:** `databricks bundle deploy -t prod` from the previous SHA.
 - **Full:** Re-run `promote-prod.yml` with a previous SHA via `workflow_dispatch`.
 
-## Network caveat
+## AKS network access
 
-The workflows assume GitHub-hosted runners can reach [AKS](../resources/aks.md),
-[ACR](../resources/acr.md), and the [Databricks workspaces](../resources/databricks-workspace.md).
-If IP access lists exclude GitHub's IP ranges, you'll need self-hosted runners. See
-[corporate migration](../corporate-migration.md) for that path.
+[AKS](../resources/aks.md) uses authorized IP ranges, which block GitHub-hosted runners by
+default. The deploy and promote workflows handle this automatically:
+
+1. Look up the runner's public IP (`curl ifconfig.me`)
+2. Append it to the current AKS authorized IP ranges (`az aks update`)
+3. Run helm/kubectl/smoke-test steps
+4. Restore the original IP ranges (runs even if earlier steps fail)
+
+This adds ~2–4 minutes per workflow run (one `az aks update` each way). For a corporate
+environment with self-hosted runners on a VNet, you can skip this — see
+[corporate migration](../corporate-migration.md).
 
 ## Related docs
 
