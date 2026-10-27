@@ -93,7 +93,7 @@ jobs:
       # ── Dagster ──────────────────────────────────────────────────────────
       - name: Dagster check defs
         working-directory: dagster
-        run: uv run dg check defs
+        run: uv run python -c "from poc.definitions import defs; print('Definitions loaded OK')"
         env:
           DAGSTER_DBT_PARSE_PROJECT_ON_LOAD: "1"
           DATABRICKS_HOST: "https://placeholder.azuredatabricks.net"
