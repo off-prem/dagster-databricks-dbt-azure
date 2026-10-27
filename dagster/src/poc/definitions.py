@@ -16,18 +16,18 @@ The two asset groups come from:
   - dbt_project_assets: auto-generated from the dbt project's manifest — one asset
     per dbt model. Dagster runs `dbt build` to materialize them.
 """
-from dagster import Definitions
+from dagster import Definitions, define_asset_job
 from dagster_dbt import DbtCliResource
 
 from .assets.extract import raw_assets
 from .assets.dbt import DBT_PROJECT_DIR, dbt_project_assets
 
+bronze_silver_job = define_asset_job(name="bronze_silver_job", selection="*")
+
 defs = Definitions(
     assets=[*raw_assets, dbt_project_assets],
+    jobs=[bronze_silver_job],
     resources={
-        # DbtCliResource wraps the `dbt` CLI. When an asset calls dbt.cli(["build"]),
-        # it runs `dbt build` in the project directory. The dbt profile
-        # (dbt/profiles.yml) reads connection details from env vars.
         "dbt": DbtCliResource(project_dir=DBT_PROJECT_DIR),
     },
 )

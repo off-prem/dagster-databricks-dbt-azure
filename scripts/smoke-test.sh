@@ -25,12 +25,6 @@ NAMESPACE="${PROJECT}-${ENV}"
 RELEASE="${PROJECT}-${ENV}"
 SERVICE="${RELEASE}-dagster-webserver"
 
-# TODO(Phase 2.5/3.5): these names don't exist yet.
-# - JOB_NAME: docs/concepts/cicd.md names it "bronze_silver_job" but that job still needs to be
-#   defined in dagster/src/poc/definitions.py (wrapping bronze_<source> + silver_<model>).
-# - REPO_LOCATION / REPO_NAME: set by dagster/pyproject.toml + dg code location config
-#   (Phase 2.5 scaffold). Confirm with `dg check defs` or the GraphQL `workspaceOrError` query
-#   once the code location exists, then update the defaults below.
 JOB_NAME="${JOB_NAME:-bronze_silver_job}"
 REPO_LOCATION="${REPO_LOCATION:-poc}"
 REPO_NAME="${REPO_NAME:-__repository__}"
