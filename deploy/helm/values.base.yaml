@@ -56,11 +56,10 @@ runLauncher:
   config:
     k8sRunLauncher:
       imagePullPolicy: Always
+      resources:
+        requests: { cpu: 100m, memory: 512Mi }
+        limits:   { memory: 1Gi }
       runK8sConfig:
-        containerConfig:
-          resources:
-            requests: { cpu: 100m, memory: 512Mi }
-            limits:   { memory: 1Gi }
         jobSpecConfig:
           ttlSecondsAfterFinished: 600
 
