@@ -5,26 +5,37 @@ Databricks job through Dagster Pipes (API → landing volume), and dbt models bu
 bronze and silver tables from it.
 Stage and prod environments; CI promotes merged PRs through them.
 
-**[System overview](docs/index.md)** — architecture, data flow, and links to every
+**[System overview](docs/)** — architecture, data flow, and links to every
 tool, resource, and concept in one page.
 
-**[Setup guide](docs/guide.md)** — step-by-step from fresh clone to fully running,
-with `just verify <phase>` gates between phases.
+## Two ways to use this repo
+
+### Fork it
+
+Clone or fork and follow the [setup guide](docs/guide.md) — step-by-step from fresh
+clone to running system. Best when starting from scratch.
+
+### Adopt into an existing repo
+
+Pull specific components (Terraform, Helm, dbt, CI/CD) into your team's codebase.
+Read **[docs/adapt.md](docs/adapt.md)** for the component map and intake questions.
+Use Claude with access to both repos to generate a tailored adoption plan.
+See the [example plan](docs/adoption-plan-example.md) for what the output looks like.
 
 ## Docs
 
 | Doc | What it covers |
 |-----|----------------|
-| [guide.md](docs/guide.md) | End-to-end setup walkthrough (start here) |
-| [architecture.md](docs/architecture.md) | System diagram and data flow |
+| [docs/](docs/) | **System overview** — architecture, every tool/resource/concept with links |
+| [guide.md](docs/guide.md) | End-to-end setup walkthrough (fork path) |
+| [adapt.md](docs/adapt.md) | Component map, intake questions, and Claude instructions (adopt path) |
+| [adoption-plan-example.md](docs/adoption-plan-example.md) | Example adoption plan (Synapse/ADF migration) |
+| [architecture.md](docs/architecture.md) | System diagram, data flow, identity flow |
 | [costs.md](docs/costs.md) | Monthly cost breakdown and scope |
 | [decisions.md](docs/decisions.md) | Design rationale and trade-offs |
 | [conventions.md](docs/conventions.md) | Naming, tagging, branching rules |
+| [improvements.md](docs/improvements.md) | TODO tracker: security, performance, scaling |
 | [corporate-migration.md](docs/corporate-migration.md) | What changes in a corporate network |
-| [docs/README.md](docs/README.md) | Index of every tool, resource and concept, plus the doc template |
-| [tools/](docs/tools/) | Per-tool docs (terraform, helm, kubectl, dbt, …) |
-| [resources/](docs/resources/) | Per-resource docs, including manual setup items (aks, postgres, github-app, …) |
-| [concepts/](docs/concepts/) | Concept docs (cicd, oidc, unity-catalog, …) |
 
 ## Repo layout
 
