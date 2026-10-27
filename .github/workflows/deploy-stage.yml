@@ -65,7 +65,7 @@ jobs:
           RUNNER_IP="$(curl -sf https://ifconfig.me)/32"
           echo "runner_ip=${RUNNER_IP}" >> "$GITHUB_OUTPUT"
           CURRENT=$(az aks show -g "$RG" -n "$CLUSTER" \
-            --query "apiServerAccessProfile.authorizedIpRanges | join(',')" -o tsv)
+            --query "join(',', apiServerAccessProfile.authorizedIpRanges)" -o tsv)
           echo "original_ranges=${CURRENT}" >> "$GITHUB_OUTPUT"
           az aks update -g "$RG" -n "$CLUSTER" \
             --api-server-authorized-ip-ranges "${CURRENT},${RUNNER_IP}"
