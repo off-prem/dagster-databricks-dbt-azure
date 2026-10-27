@@ -59,6 +59,9 @@ runLauncher:
       resources:
         requests: { cpu: 100m, memory: 512Mi }
         limits:   { memory: 1Gi }
+      runK8sConfig:
+        jobSpecConfig:
+          ttlSecondsAfterFinished: 600
 
 # ── Service account ──────────────────────────────────────────────────────────
 # The K8s service account (SA) is the identity pods run as inside K8s. With
