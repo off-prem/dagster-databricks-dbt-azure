@@ -49,6 +49,7 @@ set -x
 helm upgrade --install "${RELEASE}" dagster/dagster \
   --version 1.13.26 \
   -n "${NAMESPACE}" --create-namespace \
+  --wait --timeout 3m0s \
   -f "${ROOT}/deploy/helm/values.base.yaml" \
   -f "${RESOLVED}" \
   "$@"
