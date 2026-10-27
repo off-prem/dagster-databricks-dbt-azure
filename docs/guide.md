@@ -738,7 +738,38 @@ Re-run any time after a terraform apply adds new values to `.env`.
 **Verify:** `gh variable list` should show ~18 variables. Settings → Environments should
 show `stage` and `prod` (with your username under required reviewers for `prod`).
 
-### 5.2–5.3 Activate workflows ✅
+### 5.2 Grant the OIDC SP access to AKS and Databricks ✅
+
+The deploy workflows need the GitHub OIDC service principal to have:
+
+1. **AKS RBAC Cluster Admin** — so `helm upgrade` and `kubectl` work from CI.
+   Re-apply the shared Terraform stack (it now includes the role assignment):
+
+   ```bash
+   source scripts/load-env.sh
+   terraform -chdir=infra/shared init -reconfigure \
+     -backend-config="storage_account_name=${TF_BACKEND_STORAGE_ACCOUNT}" \
+     -backend-config="resource_group_name=${TF_BACKEND_RESOURCE_GROUP}" \
+     -backend-config="container_name=tfstate" \
+     -backend-config="key=shared.tfstate"
+   terraform -chdir=infra/shared apply
+   ```
+
+2. **Databricks workspace user** — so `databricks bundle deploy` works from CI.
+   Add the SP to both workspaces:
+
+   ```bash
+   source scripts/load-env.sh
+   DATABRICKS_HOST="${DBX_STAGE_HOST}" databricks service-principals create \
+     --application-id "${AZURE_CLIENT_ID}" --display-name "app-dagster-github"
+   DATABRICKS_HOST="${DBX_PROD_HOST}" databricks service-principals create \
+     --application-id "${AZURE_CLIENT_ID}" --display-name "app-dagster-github"
+   ```
+
+**Verify:** `terraform plan` on the shared stack shows no changes. Both Databricks
+workspace Settings → Identity and access → Service principals show `app-dagster-github`.
+
+### 5.3–5.4 Activate workflows ✅
 
 Workflow skeletons replaced with full implementations and moved to `.github/workflows/`:
 
@@ -759,12 +790,12 @@ is rejected with "refusing to allow an OAuth App to create or update workflow," 
 via SSH (`git remote set-url origin git@github.com:<org>/<repo>.git`) or refresh your token
 with `gh auth refresh -s workflow --web=false`.
 
-### 5.4 First prod promotion
+### 5.5 First prod promotion
 
 Push a trivial PR. After merge: `deploy-stage` runs automatically → `promote-prod` waits
 for your approval in GitHub → Actions → **Review deployments** → **Approve and deploy**.
 
-### 5.5 Harden
+### 5.6 Harden
 
 - Restrict the Entra app's RBAC to just the three resource groups + ACR + AKS
 - Copy `.github/CODEOWNERS.example` to `.github/CODEOWNERS`
