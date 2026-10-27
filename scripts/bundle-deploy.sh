@@ -21,6 +21,14 @@ else
   export DATABRICKS_HOST="${DBX_PROD_HOST:?DBX_PROD_HOST is blank in .env — run infra/env prod first}"
 fi
 export DATABRICKS_AUTH_TYPE="${DATABRICKS_AUTH_TYPE:-azure-cli}"
+unset DATABRICKS_CONFIG_PROFILE
+
+export BUNDLE_VAR_ci_sp_client_id="${AZURE_CLIENT_ID:-}"
+if [ "${ENV}" = stage ]; then
+  export BUNDLE_VAR_run_as_sp_client_id="${DBX_STAGE_SP_CLIENT_ID:-}"
+else
+  export BUNDLE_VAR_run_as_sp_client_id="${DBX_PROD_SP_CLIENT_ID:-}"
+fi
 
 echo "Deploying bundle to ${ENV} (host: ${DATABRICKS_HOST})"
 

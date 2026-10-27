@@ -92,6 +92,7 @@ jobs:
         env:
           DBX_PROD_HOST: ${{ vars.DBX_PROD_HOST }}
           DBX_PROD_SP_CLIENT_ID: ${{ vars.DBX_PROD_SP_CLIENT_ID }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
 
       # ── Smoke test ───────────────────────────────────────────────────────
       - name: Smoke test (prod)
