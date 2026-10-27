@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Post-deploy smoke test (docs/concepts/cicd.md): port-forward in the background, launch the job
-# via GraphQL, poll until SUCCESS/FAILURE, 20-minute timeout. Used by deploy-stage.yml and
-# promote-prod.yml after helm upgrade + bundle deploy.
+# Post-deploy smoke test (docs/concepts/cicd.md): hit the webserver's GraphQL endpoint,
+# launch the job, poll until SUCCESS/FAILURE, 20-minute timeout. Used by deploy-stage.yml
+# and promote-prod.yml after helm upgrade + bundle deploy.
+#
+# In CI (ARC runners inside the cluster), the service is reached directly via cluster DNS.
+# Locally, kubectl port-forward is used instead.
+#
 # Usage: scripts/smoke-test.sh <stage|prod>
 set -euo pipefail
 
@@ -20,8 +24,6 @@ PROJECT="${TF_VAR_project:-dagster}"
 NAMESPACE="${PROJECT}-${ENV}"
 RELEASE="${PROJECT}-${ENV}"
 SERVICE="${RELEASE}-dagster-webserver"
-LOCAL_PORT="${PORT:-3000}"
-GRAPHQL_URL="http://localhost:${LOCAL_PORT}/graphql"
 
 # TODO(Phase 2.5/3.5): these names don't exist yet.
 # - JOB_NAME: docs/concepts/cicd.md names it "bronze_silver_job" but that job still needs to be
@@ -45,18 +47,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Starting background port-forward to ${SERVICE} (namespace ${NAMESPACE})..."
-kubectl port-forward -n "${NAMESPACE}" "svc/${SERVICE}" "${LOCAL_PORT}:80" \
-  >/tmp/dagster-smoke-port-forward.log 2>&1 &
-PF_PID=$!
+if [[ -n "${CI:-}" ]]; then
+  BASE_URL="http://${SERVICE}.${NAMESPACE}.svc.cluster.local"
+  echo "CI detected — reaching webserver via cluster DNS: ${BASE_URL}"
+else
+  LOCAL_PORT="${PORT:-3000}"
+  BASE_URL="http://localhost:${LOCAL_PORT}"
+  echo "Starting background port-forward to ${SERVICE} (namespace ${NAMESPACE})..."
+  kubectl port-forward -n "${NAMESPACE}" "svc/${SERVICE}" "${LOCAL_PORT}:80" \
+    >/tmp/dagster-smoke-port-forward.log 2>&1 &
+  PF_PID=$!
+fi
+GRAPHQL_URL="${BASE_URL}/graphql"
 
 echo "Waiting for the webserver to answer..."
 for i in $(seq 1 30); do
-  if curl -sf -o /dev/null "http://localhost:${LOCAL_PORT}"; then
+  if curl -sf -o /dev/null "${BASE_URL}"; then
     break
   fi
   if [[ "${i}" -eq 30 ]]; then
-    echo "Webserver never came up; see /tmp/dagster-smoke-port-forward.log" >&2
+    echo "Webserver never came up at ${BASE_URL}" >&2
+    [[ -f /tmp/dagster-smoke-port-forward.log ]] && cat /tmp/dagster-smoke-port-forward.log >&2
     exit 1
   fi
   sleep 2
