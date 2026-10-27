@@ -34,17 +34,13 @@ the current workaround (if any), and the proper fix.
 - **Workaround:** Custom `_SdkContextLoader` and `_SdkMessageWriter` in `entrypoint.py` that use `WorkspaceClient().files` (REST API) instead of FUSE. `rest_api.py` also uses the SDK for file writes. The notebook inherits the SP identity via `WorkspaceClient()` (no explicit credentials).
 - **Proper fix:** If Databricks adds FUSE support to Azure serverless, switch back to the built-in `PipesUnityCatalogVolumes*` classes. Alternatively, investigate `spark_python_task` + `environment_key` (cleaner script format, explicit dependencies) once FUSE or an official SDK-based Pipes transport is available.
 
-### AKS IP whitelisting adds ~4 min to deploy workflows
+### ~~AKS IP whitelisting adds ~4 min to deploy workflows~~ — resolved by ARC
 - **Discovered:** Phase 5 deploy-stage debugging
-- **Symptom:** `az aks update` to add/remove the GitHub runner IP takes ~2 min each way, and the API server may not be reachable for up to 2 min after the update completes (propagation delay).
-- **Workaround:** A retry loop polls `kubectl cluster-info` after the IP update until the API server responds (up to 3 min), then proceeds with helm. The cleanup step restores original IPs with `if: always()`.
-- **Proper fix:** Use [`az aks command invoke`](https://learn.microsoft.com/en-us/azure/aks/access-private-cluster) to run helm/kubectl through the Azure API, bypassing the network entirely. This is Microsoft's recommended approach for CI/CD with restricted AKS clusters. Requires packaging values files for upload via `--file`. For corporate environments, self-hosted runners on the VNet eliminate the problem entirely (see [corporate-migration.md](corporate-migration.md)).
+- **Resolution:** Self-hosted runners via ARC run inside the AKS cluster — direct API server access, no IP whitelisting needed. See [decision #16](decisions.md).
 
-### Databricks IP access list adds overhead to deploy workflows
+### ~~Databricks IP access list blocks CI runners~~ — resolved by ARC
 - **Discovered:** Phase 5 deploy-stage debugging
-- **Symptom:** `databricks bundle deploy` returns 403 "Source IP address is blocked by Databricks IP ACL" because the workspace IP access list only allows the user's local IP and AKS egress IP.
-- **Workaround:** Workflows temporarily create an allow-list entry for the runner IP via `databricks ip-access-lists create`, then delete it in an `if: always()` cleanup step. Unlike AKS, the Databricks IP access list takes effect immediately (no propagation delay).
-- **Proper fix:** Same options as the AKS IP whitelisting — self-hosted runners with static IPs, or Databricks [Private Link](https://learn.microsoft.com/en-us/azure/databricks/security/network/classic/private-link-standard) for corporate environments. The temporary allow-list pattern is standard for GitHub-hosted runners when IP ACLs are required.
+- **Resolution:** ARC runner pods egress through the AKS public IP, which is already on the Databricks workspace allow list. No temporary IP allow-list entries needed.
 
 ### Databricks CI/CD uses azure-cli auth instead of github-oidc
 - **Discovered:** Phase 5 deploy-stage debugging
