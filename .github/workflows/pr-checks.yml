@@ -103,17 +103,8 @@ jobs:
           DBX_SP_SECRET: placeholder
           DBX_BUNDLE_ROOT: "/Workspace/.bundle/dagster/stage/files"
 
-      - name: Pytest
-        working-directory: dagster
-        run: uv run pytest
-        env:
-          DAGSTER_DBT_PARSE_PROJECT_ON_LOAD: "1"
-          DATABRICKS_HOST: "https://placeholder.azuredatabricks.net"
-          DBX_WAREHOUSE_HTTP_PATH: "/sql/1.0/warehouses/placeholder"
-          DBX_CATALOG: ci
-          DBX_SP_CLIENT_ID: placeholder
-          DBX_SP_SECRET: placeholder
-          DBX_BUNDLE_ROOT: "/Workspace/.bundle/dagster/stage/files"
+      # pytest step omitted — no tests exist yet. Add pytest to
+      # [dependency-groups] dev and create dagster/tests/ when ready.
 
       # ── Docker build (no push) ───────────────────────────────────────────
       - name: Docker build
