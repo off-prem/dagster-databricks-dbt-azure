@@ -849,7 +849,7 @@ is rejected with "refusing to allow an OAuth App to create or update workflow," 
 via SSH (`git remote set-url origin git@github.com:<org>/<repo>.git`) or refresh your token
 with `gh auth refresh -s workflow --web=false`.
 
-### 5.6 First prod promotion
+### 5.6 First prod promotion ✅
 
 Push a trivial PR. After merge: `deploy-stage` runs automatically → `promote-prod` waits
 for your approval in GitHub → Actions → **Review deployments** → **Approve and deploy**.
