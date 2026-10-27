@@ -302,38 +302,10 @@ gh auth refresh -s workflow --web=false
 
 ---
 
-## Day-to-day operations
+## After setup
 
-### Cost control
-
-```bash
-just stop     # stop AKS + Postgres when done for the day
-just start    # restart when ready to work
-```
-
-See [stop/start](concepts/stop-start.md) for gotchas and cost details.
-
-### Useful commands
-
-```bash
-just --list              # all commands
-just show-env            # current .env
-just phase <N>           # re-run a phase (skips completed steps)
-just port-forward stage  # Dagster UI
-just dbt stage build     # run dbt
-just check-defs          # validate Dagster
-just test                # run tests
-just smoke-test stage    # automated end-to-end test
-just verify <N>          # verify phase N (standalone, no changes)
-```
-
-### IP changes
-
-```bash
-just setup-env           # re-detect IP
-just tf-apply shared     # update firewall rules
-just tf-apply env-stage  # update Databricks IP access list
-```
+See **[operations.md](operations.md)** for day-to-day commands: cost control,
+deploying changes, running dbt, IP changes, and the full command reference.
 
 ---
 

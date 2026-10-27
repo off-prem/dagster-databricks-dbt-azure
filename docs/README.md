@@ -54,7 +54,8 @@ dbt runs inside the Dagster run pod against a serverless SQL warehouse.
 
 | Doc | Purpose |
 |-----|---------|
-| [guide.md](guide.md) | Step-by-step setup from fresh clone to running system |
+| [guide.md](guide.md) | Setup reference: what each phase creates, decisions, troubleshooting |
+| [operations.md](operations.md) | Day-to-day: commands, cost control, IP changes, deploying |
 | [architecture.md](architecture.md) | System diagram, data flow, identity flow |
 | [costs.md](costs.md) | Resource inventory, monthly cost breakdown, scope boundary |
 
