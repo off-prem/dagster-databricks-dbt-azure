@@ -107,14 +107,22 @@ jobs:
         run: |
           set -o pipefail
           RUNNER_IP="${{ steps.aks-ip.outputs.runner_ip }}"
-          LIST_ID=$(databricks ip-access-lists create \
-            --json "{\"label\": \"ci-runner-${GITHUB_RUN_ID}\", \"list_type\": \"ALLOW\", \"ip_addresses\": [\"${RUNNER_IP}\"]}" \
-            --output json | jq -r '.ip_access_list.list_id')
+          PROJECT="${{ env.TF_VAR_project }}"
+          DBX_TOKEN=$(az account get-access-token \
+            --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d \
+            --query accessToken -o tsv)
+          echo "::add-mask::${DBX_TOKEN}"
+          BODY="{\"label\":\"ci-runner-${GITHUB_RUN_ID}\",\"list_type\":\"ALLOW\",\"ip_addresses\":[\"${RUNNER_IP}\"]}"
+          RESPONSE=$(kubectl run "ci-dbx-allow-${GITHUB_RUN_ID}" \
+            --rm -i --restart=Never --namespace=dagster-stage \
+            --image=curlimages/curl:8.11.1 \
+            -- -sf -X POST "${{ vars.DBX_STAGE_HOST }}/api/2.0/ip-access-lists" \
+              -H "Authorization: Bearer ${DBX_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "${BODY}")
+          LIST_ID=$(echo "${RESPONSE}" | jq -r '.ip_access_list.list_id')
           echo "list_id=${LIST_ID}" >> "$GITHUB_OUTPUT"
           echo "Allowed runner IP ${RUNNER_IP} on Databricks (list ${LIST_ID})"
-        env:
-          DATABRICKS_HOST: ${{ vars.DBX_STAGE_HOST }}
-          DATABRICKS_AUTH_TYPE: azure-cli
 
       - name: Bundle deploy (stage)
         run: scripts/bundle-deploy.sh stage
