@@ -1,71 +1,66 @@
 # Databricks Workspace
 
-A Databricks environment — the web UI, notebooks, SQL editor, and compute where your data
-pipelines run and SQL queries execute. Each workspace is an Azure resource with its own URL
-(like `https://adb-1234567890.12.azuredatabricks.net`).
+> **Type:** Resource · **Scope:** per-env · **Name:** `dbw-<project>-<env>` · **Stack:** `infra/env`
 
-## Why we need it
+An Azure Databricks environment: the UI, SQL editor and serverless compute, with its own URL.
+There is one workspace for stage and one for prod.
 
-This is where the data processing happens. Dagster orchestrates *when* things run, but
-Databricks does the actual compute:
-- The **SDP (Spark Declarative Pipeline)** ingests data from the source API into bronze tables
-- The **SQL warehouse** runs dbt queries that transform bronze into silver
+## Why we use it
 
-We create two workspaces — one for stage, one for prod — so environments are fully isolated.
+Dagster decides *when* to run; Databricks does the compute. The workspace hosts the ingestion
+job (a serverless notebook task) and the [SQL warehouse](databricks-sql-warehouse.md) for dbt.
+Two workspaces keep the environments fully isolated.
 
-## Configuration
+## How it's used here
 
 | Setting | Value | Why |
 |---------|-------|-----|
-| Tier | Premium | Required for [Unity Catalog](../concepts/unity-catalog.md) |
-| Network | Managed VNet (no VNet injection) | Serverless compute doesn't need VNet injection; simpler setup. See [corporate migration](../corporate-migration.md) for the VNet injection path. |
-| IP access list | Your IP | Restricts who can access the workspace API |
+| SKU | Premium | Required for Unity Catalog |
+| Network | Managed VNet (no VNet injection) | Only serverless compute is used; see [decision 12](../decisions.md) |
+| Managed resource group | `rg-<project>-<env>-dbx-managed` | Created by Azure for the workspace |
+| Public access | Enabled, restricted by an **IP access list** (your IP and the AKS egress IP) | See [network access](../concepts/network-access.md) |
 
-### Objects inside the workspace
+Objects created inside it by the `databricks` Terraform provider (they stay at count 0
+until `metastore_id` and `databricks_host` are set):
 
-These are created by [Terraform](../tools/terraform.md) using the Databricks provider
-(Phase 2.4):
+| Object | Notes |
+|--------|-------|
+| Storage credential + external location | Backed by the [access connector](databricks-access-connector.md) |
+| Catalog `<env>` | Storage root `metastore/catalogs/<env>` in [ADLS](adls.md) |
+| Schemas `bronze`, `silver` | See [medallion architecture](../concepts/medallion-architecture.md) |
+| Volume `bronze.landing` | Landing zone for raw JSON and Pipes messages |
+| [SQL warehouse](databricks-sql-warehouse.md) | `sql-<project>-<env>` |
+| [Service principal](databricks-service-principal.md) | What Dagster authenticates as |
+| Grants and IP access lists | Least privilege for the service principal |
 
-| Object | What it is |
-|--------|-----------|
-| **Storage credential** | Tells Unity Catalog how to authenticate to [ADLS](adls.md) (via the Access Connector's managed identity) |
-| **External locations** (`bronze`, `silver`) | Maps Unity Catalog schemas to specific ADLS containers |
-| **Catalog** (`stage` or `prod`) | Top-level data container in [Unity Catalog](../concepts/unity-catalog.md) |
-| **Schemas** (`bronze`, `silver`, `ops`) | Containers for tables within the catalog |
-| **Volume** (`ops.dagster_pipes`) | A storage location for exchanging files (future use) |
-| **SQL warehouse** | Serverless, 2X-Small, auto-stop 5 min. The compute endpoint [dbt](../tools/dbt.md) runs against. Costs ~$0.30–0.50 per run, $0 when idle. |
-| **Service principal** (`sp-dagster-<env>`) | A non-human identity that Dagster authenticates as. Has an OAuth client ID and secret stored in [Key Vault](key-vault.md). Has `USE CATALOG`, `CREATE` on its catalog, `CAN MANAGE` on the pipeline, `CAN USE` on the warehouse. |
+The Unity Catalog metastore is created manually (see [Unity Catalog](../concepts/unity-catalog.md)).
 
-### Access Connector
+## Key commands & files
 
-An Azure resource (separate from the workspace) with a system-assigned managed identity.
-It has `Storage Blob Data Contributor` on the [ADLS](adls.md) account. Unity Catalog
-uses it to read/write table data.
+```bash
+just bundle-deploy stage          # ship the Databricks-side code
+scripts/setup-env.sh collect-tf env-stage
+```
+
+Terraform: `infra/env/main.tf`, `infra/env/databricks.tf`.
+
+## Gotchas
+
+- The workspace URL is per user, so it lives in `.env` (`DBX_STAGE_HOST`, `DBX_PROD_HOST`) and never in committed files.
+- Two-pass apply: create the workspace first, record its host, then apply again to create the in-workspace objects.
+- A changed IP locks you out of the workspace API. Update `TF_VAR_my_ip_cidr` and re-apply.
+- New workspaces get a 14-day Premium trial.
 
 ## Cost
 
-The workspace itself is free. You pay for compute (DBUs — Databricks Units):
+The workspace is free. Compute is billed per run (serverless job about $0.07–0.15, warehouse about $0.30–0.50) and is $0 when idle.
 
-| Compute | Billing |
-|---------|---------|
-| SDP pipeline (serverless) | ~$0.25–0.50 per run |
-| SQL warehouse (serverless, 2X-Small) | ~$0.30–0.50 per run |
-| Idle | $0 |
+## Managed by
 
-New workspaces get a 14-day Premium trial with free DBUs.
-
-## Provisioned by
-
-- **The workspace** (Azure resource): [Terraform](../tools/terraform.md) `infra/env/` stack
-  via `azurerm_databricks_workspace`
-- **Objects inside** (catalog, warehouse, SP, etc.): [Terraform](../tools/terraform.md)
-  `infra/env/` stack via the `databricks` provider
-- **The SDP pipeline**: [Databricks CLI](../tools/databricks-cli.md) via Asset Bundle
+[Terraform](../tools/terraform.md), `infra/env/` (workspace through `azurerm`, contents through `databricks`).
+Code is deployed by [Asset Bundles](../tools/databricks-asset-bundles.md).
 
 ## Related docs
 
-- [Unity Catalog](../concepts/unity-catalog.md) — the governance layer
-- [ADLS](adls.md) — where table data physically lives
-- [dbt](../tools/dbt.md) — runs SQL against the warehouse
-- [Databricks CLI](../tools/databricks-cli.md) — deploys the SDP pipeline
-- [Key Vault](key-vault.md) — stores the SP credentials
+- [Unity Catalog](../concepts/unity-catalog.md), [ADLS](adls.md), [Key Vault](key-vault.md)
+- [Databricks CLI](../tools/databricks-cli.md), [dbt](../tools/dbt.md)

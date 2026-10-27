@@ -1,46 +1,47 @@
 # uv
 
-A fast Python package manager by Astral (the Ruff team). Replaces `pip`, `venv`, and
-`pyenv` with a single tool that's 10–100× faster.
+> **Type:** Tool · **Scope:** local + CI + Docker image · **Pinned:** 0.11.14 (`.tool-versions`); Python 3.12.13
+
+A fast Python package and project manager from Astral. It replaces `pip`, `venv` and `pyenv`.
 
 ## Why we use it
 
-The Dagster code location (`dagster/`) is a Python project. `uv` manages its dependencies,
-virtual environment, and Python version. It's also used to install the Azure CLI on
-platforms without a native package (via `uv tool`).
+The repo standardizes on `uv` for all Python. It gives reproducible installs from `uv.lock`
+and manages the Python version, so local, CI and Docker environments match.
 
-## Key commands
+## How it's used here
 
-```bash
-# Run a command inside the project's virtual environment
-uv run pytest                  # Run tests
-uv run dg check defs           # Check Dagster definitions
+- `dagster/pyproject.toml` declares dependencies (Dagster, `dagster-databricks`, `dagster-dbt`,
+  `dbt-databricks`, `dagster-postgres`, `dagster-k8s`). `dagster/uv.lock` pins them exactly.
+- The [Dockerfile](docker.md) runs `uv sync --frozen --no-dev`.
+- `pr-checks.yml` uses `astral-sh/setup-uv` and `uv sync --frozen`.
+- `setup-tools.sh` uses it to install Python and, where no native package exists, the Azure CLI.
 
-# Install/sync dependencies from pyproject.toml
-uv sync                        # in dagster/
-
-# Install a standalone tool (like azure-cli)
-uv tool install azure-cli==2.91.0
-```
-
-The `justfile` uses `uv run` for Dagster commands:
+## Key commands & files
 
 ```bash
-just check-defs   # → cd dagster && uv run dg check defs
-just test         # → cd dagster && uv run pytest
+cd dagster
+uv sync                     # create .venv from uv.lock
+uv run pytest
+uv run dg check defs        # or: just check-defs
+uv add <package>            # then commit the updated uv.lock
 ```
 
-## How it's installed
+## Gotchas
 
-`scripts/setup-tools.sh` installs the version pinned in `.tool-versions` using Astral's
-install script, placing the binary in `~/.local/bin`.
+- Use `--frozen` in CI and images so a stale lock file fails instead of silently updating.
+- `requires-python` is `>=3.12,<3.13` to match the image.
+- Commit `uv.lock` with any dependency change, or the image build uses outdated pins.
 
-## How it's configured in this project
+## Cost
 
-The Dagster Python project is in `dagster/`. Its `pyproject.toml` defines dependencies
-(dagster, dagster-databricks, dagster-dbt, dbt-databricks, databricks-sdk). `uv` reads
-this file to create the virtual environment and install packages.
+Free.
+
+## Managed by
+
+Installed by `scripts/setup-tools.sh`; the Docker image copies a pinned binary from `ghcr.io/astral-sh/uv`.
 
 ## Related docs
 
-- [Conventions](../conventions.md) — Python and dependency management conventions
+- [Dagster](dagster.md), [Docker](docker.md), [dbt](dbt.md)
+- [Conventions](../conventions.md)

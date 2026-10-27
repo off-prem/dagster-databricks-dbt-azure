@@ -1,7 +1,8 @@
 # Dagster on AKS orchestrating Azure Databricks
 
-Lean proof of concept. Dagster runs on AKS via Helm; assets trigger a Databricks
-Spark Declarative Pipeline (API → bronze) and a dbt model (bronze → silver).
+Lean proof of concept. Dagster runs on AKS via Helm. One asset submits a serverless
+Databricks job through Dagster Pipes (API → landing volume), and dbt models build
+bronze and silver tables from it.
 Stage and prod environments; CI promotes merged PRs through them.
 
 Start with [`docs/guide.md`](docs/guide.md) — step-by-step from fresh clone to fully
@@ -17,8 +18,9 @@ running, with `just verify <phase>` gates between phases.
 | [decisions.md](docs/decisions.md) | Design rationale and trade-offs |
 | [conventions.md](docs/conventions.md) | Naming, tagging, branching rules |
 | [corporate-migration.md](docs/corporate-migration.md) | What changes in a corporate network |
+| [docs/README.md](docs/README.md) | Index of every tool, resource and concept, plus the doc template |
 | [tools/](docs/tools/) | Per-tool docs (terraform, helm, kubectl, dbt, …) |
-| [resources/](docs/resources/) | Per-resource docs (aks, postgres, key-vault, …) |
+| [resources/](docs/resources/) | Per-resource docs, including manual setup items (aks, postgres, github-app, …) |
 | [concepts/](docs/concepts/) | Concept docs (cicd, oidc, unity-catalog, …) |
 
 ## Repo layout
@@ -26,11 +28,11 @@ running, with `just verify <phase>` gates between phases.
 ```
 infra/          Terraform — bootstrap/, shared/, env/, modules/
 dagster/        Dagster code location + Docker image
-databricks/     Databricks Asset Bundle (SDP pipeline)
-dbt/            dbt project (bronze → silver)
+databricks/     Databricks Asset Bundle (extract notebook + sources.yml)
+dbt/            dbt project (landing files → bronze → silver)
 deploy/         Helm values + K8s manifests
 scripts/        Setup, deploy, verify, start/stop helpers
-ci/             Pending CI workflows (activated via git mv)
+.github/        CI workflows (pr-checks, deploy-stage, promote-prod)
 docs/           All documentation
 ```
 
@@ -44,7 +46,7 @@ The `justfile` loads `.env` automatically. Run `just <command>`:
 | `setup-env` | Detect env values, scaffold all keys into `.env` |
 | `set-env <key> <value>` | Set a single key in `.env` |
 | `collect-tf <stack>` | Capture Terraform outputs into `.env` |
-| `collect-bundle <env>` | Capture pipeline ID after bundle deploy |
+| `collect-bundle <env>` | Print the bundle root for an env (no `.env` key is written) |
 | `show-env` | Print current `.env` values |
 | `tf-init <stack>` | `terraform init` (bootstrap, shared, env-stage, env-prod) |
 | `tf-plan <stack>` | `terraform plan` |
@@ -54,8 +56,10 @@ The `justfile` loads `.env` automatically. Run `just <command>`:
 | `bundle-validate <env>` | Validate bundle without deploying |
 | `dbt <env> <args>` | Run dbt commands against an environment |
 | `check-defs` | Check Dagster definitions |
-| `test` | Run Dagster tests |
+| `test` | Run Dagster tests (`pytest`; no tests exist yet) |
 | `verify <phase>` | Verify a phase is complete (0–5) |
+| `setup-ci` | Sync `.env` to GitHub variables and create environments |
+| `setup-arc` | Install self-hosted GitHub runners (ARC) on AKS |
 | `port-forward <env>` | Dagster UI at localhost:3000 |
 | `smoke-test <env>` | Post-deploy smoke test |
 | `stop` / `start` | Stop/start AKS + Postgres (cost control) |

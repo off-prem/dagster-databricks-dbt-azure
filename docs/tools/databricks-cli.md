@@ -1,61 +1,55 @@
 # Databricks CLI
 
-The official CLI for Databricks. In this project it's used exclusively for **Asset Bundle**
-operations — deploying and validating the SDP (Spark Declarative Pipeline) that ingests
-data into the bronze layer.
+> **Type:** Tool · **Scope:** local + CI · **Pinned:** 1.22.1 (`.tool-versions`)
+
+The official Databricks command-line tool. This project uses it only for
+[Asset Bundle](databricks-asset-bundles.md) commands (`validate`, `deploy`, `destroy`).
 
 ## Why we use it
 
-Databricks Asset Bundles are the native way to deploy pipeline code to Databricks. The CLI
-handles packaging your Python source, resolving variables per target (stage/prod), and
-creating or updating the pipeline in the workspace.
+It is the native way to push the Databricks-side code (`databricks/src/extract/`) to a
+workspace. Dagster submits that code as a serverless job at run time, so it has to be
+deployed to the workspace first.
 
-## Key commands
+## How it's used here
+
+- `scripts/bundle-deploy.sh <env>` sets `DATABRICKS_HOST` from `.env` and then runs
+  `databricks bundle deploy -t <env>`. The workspace URL is never in the bundle YAML.
+- **Local auth:** the Databricks SDK picks up your `az login` session (`azure-cli` auth type).
+- **CI auth:** the same OIDC-authenticated `az` session. The CI service principal
+  (`AZURE_CLIENT_ID`) needs `workspace-access` entitlement and `CAN_MANAGE` on the bundle
+  folder. The bundle grants the latter through its `permissions:` block.
+- `scripts/setup-env.sh collect-bundle <env>` captures bundle outputs into `.env`.
+
+## Key commands & files
 
 ```bash
-just bundle-validate <env>   # Check bundle config syntax and variable references
-just bundle-deploy <env>     # Deploy the pipeline to the workspace
-just collect-bundle <env>    # Capture the pipeline ID into .env
+just bundle-validate stage      # databricks bundle validate -t stage
+just bundle-deploy stage        # scripts/bundle-deploy.sh stage
 ```
 
-The wrapper script `scripts/bundle-deploy.sh` sets `DATABRICKS_HOST` from your `.env`
-before calling the CLI — the workspace URL is never hardcoded in the bundle YAML.
+Files: `databricks/databricks.yml` (the bundle), `scripts/bundle-deploy.sh`.
 
-## How it authenticates
+## Gotchas
 
-Locally, the CLI uses your `az` CLI session (the Databricks SDK detects Azure CLI auth
-automatically). In CI, it uses [OIDC](../concepts/oidc.md) via the Entra app.
+- Deploying as yourself first, then as CI, can fail with a permissions error on the bundle
+  folder. Redeploy once from your own account after changing the `permissions:` block.
+- `pr-checks.yml` runs `bundle validate` with `continue-on-error: true`, because PR runners
+  can't always reach the workspace (IP access list).
+- The CLI is a standalone binary, not a pip package. CI installs it with Databricks'
+  `setup-cli` install script.
 
-## How it's configured in this project
+## Cost
 
-The bundle lives in `databricks/`:
+Free. Deployments only copy files.
 
-| File | Purpose |
-|------|---------|
-| `databricks.yml` | Bundle definition: name, variables (`catalog`, `source_url`), targets (`stage`, `prod`) |
-| `resources/bronze_pipeline.yml` | SDP pipeline resource: serverless, triggered, target schema `bronze` |
-| `src/bronze_ingest.py` | Pipeline code: reads the source API, returns a DataFrame |
+## Managed by
 
-### Targets
-
-Each target maps to an environment:
-
-```yaml
-targets:
-  stage:
-    mode: production
-    variables:
-      catalog: stage
-  prod:
-    mode: production
-    variables:
-      catalog: prod
-```
-
-The workspace URL comes from the environment (`DATABRICKS_HOST`), not the YAML.
+Installed by `scripts/setup-tools.sh` (pinned) locally and by the `setup-cli` install script in CI.
 
 ## Related docs
 
-- [Databricks workspace](../resources/databricks-workspace.md) — where bundles deploy to
-- [Unity Catalog](../concepts/unity-catalog.md) — the catalog/schema hierarchy the pipeline writes to
-- [Conventions](../conventions.md) — bundle naming and variable patterns
+- [Databricks Asset Bundles](databricks-asset-bundles.md): what the CLI deploys
+- [Databricks workspace](../resources/databricks-workspace.md): the deploy target
+- [CI/CD](../concepts/cicd.md): where bundle deploy runs
+- [Azure CLI](azure-cli.md): supplies the auth session

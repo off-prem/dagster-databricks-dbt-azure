@@ -1,42 +1,52 @@
 # VNet (Virtual Network)
 
-An isolated private network in Azure. Resources inside the VNet can talk to each other
-over private IPs. Subnets divide the network into segments; a Network Security Group (NSG)
-acts as a firewall with rules for what traffic is allowed in and out.
+> **Type:** Resource · **Scope:** shared · **Name:** `vnet-<project>` · **Stack:** `infra/shared`
 
-## Why we need it
+An isolated private network in Azure, divided into subnets, with a Network Security Group (NSG) as a firewall.
 
-The [AKS](aks.md) cluster needs a network to run in. Even though the POC uses public
-endpoints (gated by firewalls and IP restrictions), having the VNet in place means the
-network layout is already correct for the [corporate migration](../corporate-migration.md),
-where everything moves to private endpoints.
+## Why we use it
 
-## Configuration
+[AKS](aks.md) needs a network. The POC uses public endpoints behind firewalls, but laying out
+subnets now means the [corporate migration](../corporate-migration.md) to private endpoints
+and VNet injection doesn't require redesigning the network.
 
-| Setting | Value |
-|---------|-------|
-| Address space | `10.10.0.0/16` |
-| `snet-aks` | AKS node pool subnet |
-| `snet-pe` | Reserved for private endpoints (unused in POC) |
-| `snet-dbx-host` | Reserved for Databricks VNet injection host subnet (unused in POC) |
-| `snet-dbx-container` | Reserved for Databricks VNet injection container subnet (unused in POC) |
-| NSG | Applied to `snet-aks`; default rules |
+## How it's used here
 
-The reserved subnets cost nothing — they're just address ranges. They're included so you
-don't have to redesign the network when adding private endpoints or VNet-injected
-Databricks later.
+Address space `10.0.0.0/16`:
+
+| Subnet | Range | Use |
+|--------|-------|-----|
+| `snet-aks` | `10.0.0.0/22` | AKS nodes (in use) |
+| `snet-pe` | `10.0.4.0/24` | Private endpoints (reserved) |
+| `snet-dbx-host` | `10.0.8.0/22` | Databricks VNet injection host (reserved) |
+| `snet-dbx-container` | `10.0.12.0/22` | Databricks VNet injection container (reserved) |
+
+One NSG, `nsg-<project>-shared`, is associated with the three reserved subnets.
+The Databricks subnets are delegated to `Microsoft.Databricks/workspaces`.
+
+## Key commands & files
+
+```bash
+az network vnet show --resource-group rg-dagster-shared --name vnet-dagster --query addressSpace
+```
+
+Terraform: `infra/shared/main.tf`.
+
+## Gotchas
+
+- Today's workspaces use a managed VNet, so the Databricks subnets are unused. They cost nothing.
+- Don't change the address space after resources are attached; it forces replacement.
+- Peering to a corporate network later requires non-overlapping ranges. Check `10.0.0.0/16` first.
 
 ## Cost
 
-$0. Virtual networks are free.
+$0.
 
-## Provisioned by
+## Managed by
 
-[Terraform](../tools/terraform.md) — `infra/shared/` stack.
+[Terraform](../tools/terraform.md), `infra/shared/`.
 
 ## Related docs
 
-- [AKS](aks.md) — runs in `snet-aks`
-- [Architecture](../architecture.md) — the public-vs-gated table shows which endpoints
-  are public and what the corporate posture would be
-- [Corporate migration](../corporate-migration.md) — adding private endpoints and VPN
+- [AKS](aks.md), [Network access](../concepts/network-access.md)
+- [Architecture](../architecture.md), [Corporate migration](../corporate-migration.md)

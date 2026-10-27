@@ -15,6 +15,7 @@ below show the default — if you changed it in step 0.5, substitute your projec
 (e.g. `rg-myproject-shared` instead of `rg-dagster-shared`).
 
 **Reference docs:**
+[Index of every tool, resource and concept](README.md) ·
 [Architecture](architecture.md) ·
 [Costs](costs.md) ·
 [Conventions](conventions.md) ·
@@ -194,15 +195,9 @@ Create **Environments** `stage` and `prod`. On `prod`, add yourself as **require
 public repo or a paid GitHub plan (Team/Enterprise). If you're on the free plan with a
 private repo, either make it public or skip this — you can add the gate later.
 
-Activate PR checks:
-
-```bash
-git mv ci/pending-workflows/pr-checks.yml .github/workflows/
-git add .github/workflows/pr-checks.yml
-git commit -m "ci: activate pr-checks workflow"
-```
-
-Push a test PR to verify the workflow passes.
+PR checks already live in `.github/workflows/pr-checks.yml`. Open a test PR from a branch
+to verify the workflow passes. (Step 5.1 later automates this whole step with
+`just setup-ci`, so you can also skip ahead to it once Phase 4 is done.)
 
 Verify: the PR check in the **Actions** tab should show a green checkmark. The log should
 show `azure/login@v2` succeeding (not `AADSTS700213`).
@@ -297,7 +292,7 @@ just tf-apply shared           # create (~10-15 min)
 | [Key Vault](resources/key-vault.md) | <1 | Secrets store |
 | [Postgres](resources/postgres.md) (B2s) | ~25 running, ~6 stopped | Dagster state |
 | [ADLS Gen2](resources/adls.md) | ~2 | Data lake storage |
-| [AKS](resources/aks.md) (1× B2ms) | ~60 running, ~25 stopped | Kubernetes cluster |
+| [AKS](resources/aks.md) (1× `Standard_D2as_v6` by default) | see [costs](costs.md); LB + IP + disk bill when stopped | Kubernetes cluster |
 
 Capture outputs:
 
@@ -434,11 +429,9 @@ az keyvault secret list \
 The SecretProviderClass tells the CSI Secrets Store driver which Key Vault secrets
 to sync into K8s Secrets for the Dagster pods.
 
-1. Edit `deploy/k8s/stage/secretproviderclass.yaml` — replace the three placeholders
-   with values from `just show-env`:
-   - `<KV_NAME>` → KV_NAME
-   - `<TF_VAR_tenant_id>` → TF_VAR_tenant_id
-   - `<DAGSTER_STAGE_IDENTITY_CLIENT_ID>` → DAGSTER_STAGE_IDENTITY_CLIENT_ID
+1. The manifest `deploy/k8s/stage/secretproviderclass.yaml` has three `${VAR}` placeholders
+   (`KV_NAME`, `TF_VAR_tenant_id`, `DAGSTER_STAGE_IDENTITY_CLIENT_ID`). They are resolved from
+   `.env` with `envsubst` when you apply it in step 3, so you don't edit the file.
 
 2. Create the namespace (Helm will also create it, but we need it now):
 
@@ -449,8 +442,11 @@ to sync into K8s Secrets for the Dagster pods.
 3. Apply:
 
    ```bash
-   kubectl apply -f deploy/k8s/stage/secretproviderclass.yaml
+   source scripts/load-env.sh
+   envsubst < deploy/k8s/stage/secretproviderclass.yaml | kubectl apply -f -
    ```
+
+   See [SecretProviderClass](resources/secret-provider-class.md) for what it contains.
 
 ### 2.6 Store dummy API key in Key Vault ✅
 
@@ -508,10 +504,14 @@ databricks workspace ls /Workspace/.bundle/dagster/stage/files/src/extract
 az acr build \
   --registry "$(just show-env | grep ACR_NAME | cut -d= -f2 | tr -d '"')" \
   --image poc:latest \
-  dagster/
+  --file dagster/Dockerfile \
+  .
 ```
 
 Builds the Docker image in the cloud via [ACR](resources/acr.md) — no local Docker needed.
+Run it from the **repo root**: the build context must include `dbt/` and
+`databricks/sources.yml`, which the Dockerfile copies into the image. (CI tags images with
+the git SHA instead of `latest`.)
 
 Verify the image was pushed:
 
@@ -599,14 +599,14 @@ just dbt stage build       # builds bronze table + silver table
 
 This runs two dbt models:
 
-- **`bronze/posts`** — `read_files()` from the landing volume (JSON files written by `raw_posts`).
-- **`silver/silver_source`** — selects from the bronze table with column renames.
+- **`bronze_posts`** — `read_files()` from the landing volume (JSON files written by `raw_posts`).
+- **`silver_posts`** — selects from `bronze_posts` with column renames.
 
 Verify the data landed:
 
 ```bash
 # From the Databricks SQL editor or CLI:
-# SELECT count(*) FROM stage.silver.silver_source
+# SELECT count(*) FROM stage.silver.silver_posts
 # Should return > 0 rows
 ```
 
@@ -617,9 +617,9 @@ just port-forward stage    # Dagster UI at http://localhost:3000
 ```
 
 In the UI: select both `raw_posts` and the dbt assets, click **Materialize all**. Dagster
-shows the full lineage graph: `raw_posts` → `posts` (bronze) → `silver_source`.
+shows the full lineage graph: `raw_posts` → `bronze_posts` → `silver_posts`.
 
-**Done when:** `SELECT count(*) FROM stage.silver.silver_source` > 0 and Dagster shows
+**Done when:** `SELECT count(*) FROM stage.silver.silver_posts` > 0 and Dagster shows
 the full lineage from raw to silver.
 **→ Goal 2: end-to-end data pipeline.**
 
@@ -833,8 +833,8 @@ To remove ARC: `scripts/setup-arc.sh teardown`.
 
 Workflow skeletons replaced with full implementations in `.github/workflows/`:
 
-- **pr-checks.yml** — terraform fmt/validate, bundle validate, dbt parse, dg check defs,
-  pytest, docker build (no push). Runs on GitHub-hosted runners (read-only, no IP issues).
+- **pr-checks.yml** — terraform fmt/validate, bundle validate (non-blocking), dbt parse,
+  Dagster definitions load, docker build (no push). It does not run `terraform plan` or `pytest`. Runs on GitHub-hosted runners (read-only, no IP issues).
 - **deploy-stage.yml** — runs on ARC (`runs-on: arc-runner-set`): `az acr build` →
   helm upgrade (stage) → bundle deploy (stage) → smoke test
 - **promote-prod.yml** — runs on ARC: same image SHA → helm upgrade (prod) →

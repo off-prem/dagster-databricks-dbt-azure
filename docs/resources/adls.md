@@ -1,50 +1,58 @@
 # ADLS Gen2 (Azure Data Lake Storage)
 
-A storage account with the hierarchical namespace feature enabled, optimized for big data
-workloads. Think of it as cloud file storage with folders (containers) and files (blobs),
-but with performance characteristics suited for Spark and data lake patterns.
+> **Type:** Resource · **Scope:** shared · **Name:** `st<project><random>` · **Stack:** `infra/shared`
 
-## Why we need it
+A storage account with hierarchical namespace enabled. It gives blob storage real folders
+and the performance profile Spark and Delta need.
 
-Databricks [Unity Catalog](../concepts/unity-catalog.md) needs somewhere to physically
-store the data behind your tables — the actual Parquet/Delta files. ADLS is that storage.
-When a pipeline writes to `stage.bronze.my_table`, the data files land in this storage
-account.
+## Why we use it
 
-## Configuration
+[Unity Catalog](../concepts/unity-catalog.md) needs somewhere to keep the files behind
+tables and volumes. When a job writes `stage.bronze.posts`, the Delta files land here.
+
+## How it's used here
 
 | Setting | Value | Why |
 |---------|-------|-----|
-| Account kind | StorageV2 | Standard for ADLS Gen2 |
-| HNS (hierarchical namespace) | Enabled | Required for ADLS Gen2 / Unity Catalog |
-| Replication | LRS (locally redundant) | Cheapest; sufficient for a POC |
-| Key auth | Disabled | Access only via Azure identity (the Databricks Access Connector) |
-| Firewall | Enabled | Restricted to your IP + [AKS](aks.md) egress IP |
+| Kind / tier | StorageV2, Standard | Standard for ADLS Gen2 |
+| Hierarchical namespace | On | Makes it ADLS Gen2; required by Unity Catalog |
+| Replication | LRS | Cheapest; fine for a POC |
+| Shared key auth | **Disabled** | Access only through Azure identities |
+| Firewall | Default **deny**; allows your IP, `AzureServices` bypass, and each [access connector](databricks-access-connector.md) by resource ID | Serverless compute needs explicit rules |
+| Perimeter | [NSP](network-security-perimeter.md) in Learning mode | Admits Databricks serverless |
 
-### Containers
+**Containers:** `metastore` (the Unity Catalog metastore root; each env's catalog root is
+`metastore/catalogs/<env>`), plus `bronze` and `silver`.
 
-| Container | Purpose |
-|-----------|---------|
-| `metastore` | Unity Catalog metastore root — internal metadata |
-| `bronze` | External location for the `bronze` schema — raw ingested data |
-| `silver` | External location for the `silver` schema — transformed data |
+The access connector's identity holds `Storage Blob Data Contributor` on the account.
 
-## How Databricks accesses it
+## Key commands & files
 
-The [Databricks workspace](databricks-workspace.md) uses an **Access Connector** — an Azure
-resource with a managed identity that has `Storage Blob Data Contributor` on this storage
-account. Unity Catalog uses the Access Connector's identity when reading/writing table data.
+```bash
+az storage account show --name "$STORAGE_ACCOUNT_NAME" --query networkRuleSet
+```
+
+Terraform: `infra/shared/main.tf`. The name is captured into `.env` as `STORAGE_ACCOUNT_NAME`.
+
+## Gotchas
+
+- Because key auth is off, `az storage` commands need `--auth-mode login`.
+- New access connectors must be added to the firewall's resource rules
+  (`TF_VAR_access_connector_id_stage/prod`), or Databricks reads fail with 403.
+- The `bronze` and `silver` containers exist, but the catalog and landing volume are
+  stored under `metastore/catalogs/<env>`.
+- Your IP is allow-listed. If it changes, you lose CLI access until you re-apply `shared`.
 
 ## Cost
 
-~$2/month. Storage is cheap; you're billed per GB stored and per operation.
+About $2/month: per GB stored plus operations.
 
-## Provisioned by
+## Managed by
 
-[Terraform](../tools/terraform.md) — `infra/shared/` stack.
+[Terraform](../tools/terraform.md), `infra/shared/`.
 
 ## Related docs
 
-- [Unity Catalog](../concepts/unity-catalog.md) — the governance layer on top of this storage
-- [Databricks workspace](databricks-workspace.md) — the workspace that accesses this storage
-- [Costs](../costs.md) — full cost breakdown
+- [Databricks access connector](databricks-access-connector.md), [Unity Catalog](../concepts/unity-catalog.md)
+- [Network security perimeter](network-security-perimeter.md), [Network access](../concepts/network-access.md)
+- [Costs](../costs.md)

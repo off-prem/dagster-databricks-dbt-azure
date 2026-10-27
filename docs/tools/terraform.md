@@ -1,75 +1,62 @@
 # Terraform
 
-An infrastructure-as-code tool by HashiCorp. You describe the resources you want in `.tf`
-files (a database, a cluster, a storage account), and Terraform creates, updates, or deletes
-them to match. This replaces clicking through the Azure portal — everything is repeatable,
-reviewable, and version-controlled.
+> **Type:** Tool · **Scope:** all stacks · **Pinned:** 1.17.0 (`.tool-versions`)
+
+HashiCorp's infrastructure-as-code tool. You describe resources in `.tf` files, and Terraform
+creates, changes or deletes real resources to match.
 
 ## Why we use it
 
-Every Azure resource in this project is defined in Terraform. This means:
-- The infrastructure is documented by the code itself
-- Anyone can recreate the full environment from scratch
-- Changes go through PR review like application code
-- There's no "what did someone click in the portal?" ambiguity
+Every Azure resource, and the long-lived Databricks objects, are defined in code. That makes
+the environment repeatable, reviewable in PRs, and free of "what did someone click in the portal?".
 
-## Key commands
+## How it's used here
 
-Terraform has three main commands you'll run repeatedly:
+Three independent **stacks**, each with its own state:
 
-| Command | What it does |
-|---------|-------------|
-| `terraform init` | Downloads **providers** (plugins that talk to Azure, Databricks, etc.) and connects to the [state backend](../concepts/terraform-state.md). Run once per stack, or after changing backend config. **Makes no changes to infrastructure.** |
-| `terraform plan` | Compares your `.tf` files to the current [state](../concepts/terraform-state.md) and shows what it *would* create, change, or destroy. **Makes no changes.** Always run this before `apply` to review. |
-| `terraform apply` | Actually creates/changes/destroys resources. Shows the plan first and asks you to type "yes." **This is the command that costs money and makes real changes.** |
+| Stack | Directory | Manages | State |
+|-------|-----------|---------|-------|
+| `bootstrap` | `infra/bootstrap/` | [Terraform state storage](../resources/tfstate-storage.md), [Entra app](../resources/entra-app.md) for CI | local (git-ignored) |
+| `shared` | `infra/shared/` | [VNet](../resources/vnet.md), [AKS](../resources/aks.md), [ACR](../resources/acr.md), [Key Vault](../resources/key-vault.md), [Postgres](../resources/postgres.md), [ADLS](../resources/adls.md), [NSP](../resources/network-security-perimeter.md) | remote `shared.tfstate` |
+| `env` | `infra/env/` | Per-env workspace, access connector, identity, and Databricks objects. Applied twice with `stage.tfvars` / `prod.tfvars`. | remote `stage.tfstate` / `prod.tfstate` |
 
-The `justfile` wraps these so you don't have to remember flags:
+**Providers:** `azurerm` (~> 4.0), `azuread` (~> 3.0), `databricks` (~> 1.65), `random` (~> 3.6), `time` (~> 0.12).
+
+**Variables** come from `TF_VAR_*` entries in `.env`. Committed `.tfvars` hold only non-personal
+values (`env = "stage"`). Databricks resources use `count` and stay at zero until `metastore_id`
+and `databricks_host` are set.
+
+## Key commands & files
 
 ```bash
-just tf-init <stack>     # terraform init for a stack
-just tf-plan <stack>     # terraform plan
-just tf-apply <stack>    # terraform apply
+source scripts/load-env.sh               # Claude's shell has no `just`
+terraform -chdir=infra/env init
+terraform -chdir=infra/env plan -var-file=stage.tfvars
+just tf-plan env-stage
+scripts/setup-env.sh collect-tf shared   # capture outputs into .env
 ```
 
-Where `<stack>` is one of: `bootstrap`, `shared`, `env-stage`, `env-prod`.
+`init` and `plan` change nothing. `apply` is what costs money. Apply to **prod** only with explicit approval.
 
-## How it's configured in this project
+## Gotchas
 
-We have three **stacks** (independent Terraform working directories, each with their own
-state):
+- `infra/modules/*` contain only READMEs. No module code exists yet, so each stack defines resources inline.
+- Random name suffixes ([naming](../concepts/resource-naming.md)) and the 30 s `time_sleep` for Key Vault role propagation are Terraform resources too.
+- Run `collect-tf` after every apply; Helm and Dagster read those values from `.env`.
+- Stage and prod use separate `.terraform` directories so providers and backends don't collide.
+- Lock files (`.terraform.lock.hcl`) are committed; commit lock-file changes deliberately.
 
-| Stack | Directory | What it manages | State |
-|-------|-----------|----------------|-------|
-| `bootstrap` | `infra/bootstrap/` | [Terraform state storage](../concepts/terraform-state.md), [Entra app for OIDC](../resources/entra-app.md) | Local (file on disk) |
-| `shared` | `infra/shared/` | [VNet](../resources/vnet.md), [AKS](../resources/aks.md), [ACR](../resources/acr.md), [Key Vault](../resources/key-vault.md), [Postgres](../resources/postgres.md), [ADLS](../resources/adls.md) | Remote (Azure storage) |
-| `env` | `infra/env/` | [Databricks workspace](../resources/databricks-workspace.md), [managed identity](../resources/managed-identity.md), per-env Postgres DB, K8s namespace — applied twice with different `.tfvars` | Remote (separate keys: `stage.tfstate`, `prod.tfstate`) |
+## Cost
 
-Reusable logic lives in `infra/modules/` (e.g., `modules/aks`, `modules/databricks-workspace`).
+Free. The resources it creates are what bill (see [costs](../costs.md)).
 
-### Variables and `.env`
+## Managed by
 
-Terraform reads variables from environment variables prefixed `TF_VAR_*`. For example,
-`TF_VAR_subscription_id` in your `.env` becomes the Terraform variable `subscription_id`.
-The [justfile](just.md) auto-loads `.env`, so these are always available.
-
-### Providers
-
-| Provider | What it talks to |
-|----------|-----------------|
-| `azurerm` | Azure Resource Manager (most Azure resources) |
-| `azuread` | Entra ID / Azure Active Directory (app registrations, service principals) |
-| `databricks` | Databricks workspace objects (catalogs, warehouses, service principals) |
-| `random` | Generates random suffixes for globally-unique resource names |
-
-## Key files
-
-- `infra/bootstrap/main.tf` — state storage + GitHub OIDC app
-- `infra/shared/` — all shared Azure resources
-- `infra/env/` — per-environment resources; `stage.tfvars` and `prod.tfvars` provide the settings
-- `infra/modules/` — reusable modules
+Installed by `scripts/setup-tools.sh`; validated in CI with `hashicorp/setup-terraform`.
 
 ## Related docs
 
-- [Terraform state](../concepts/terraform-state.md) — how state works and why it matters
-- [Costs](../costs.md) — what each resource costs
-- [Conventions](../conventions.md) — naming patterns, tagging, module interface rules
+- [Terraform state](../concepts/terraform-state.md)
+- [Environment parametrization](../concepts/environment-parametrization.md)
+- [Azure RBAC](../concepts/azure-rbac.md)
+- [Conventions](../conventions.md), [Costs](../costs.md)

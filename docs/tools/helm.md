@@ -1,54 +1,61 @@
 # Helm
 
-A package manager for Kubernetes. The Dagster project publishes a Helm **chart** — a bundle
-of YAML templates that define all the Kubernetes resources Dagster needs (pods, services,
-config maps, etc.). You customize the chart with **values files** that fill in the
-template variables.
+> **Type:** Tool · **Scope:** per-env · **Pinned:** 3.22.1 (`.tool-versions`); Dagster chart 1.13.26
+
+The package manager for Kubernetes. A **chart** bundles the YAML templates for an app, and
+**values files** fill in the settings.
 
 ## Why we use it
 
-Deploying Dagster on Kubernetes requires dozens of coordinated YAML manifests. Writing them
-by hand would be error-prone and hard to maintain. Helm lets us use the officially maintained
-chart and override only the settings that differ from defaults.
+Dagster needs many coordinated Kubernetes objects. The official chart provides them, and we
+override only what differs from the defaults.
 
-## Key commands
+## How it's used here
 
-```bash
-just helm-upgrade <env>   # Deploy or update Dagster (env: stage or prod)
-```
-
-Under the hood this runs `scripts/helm-upgrade.sh`, which calls `helm upgrade --install`
-with the right values files and `--set` flags populated from your `.env`.
-
-## How it's configured in this project
-
-The Helm configuration lives in `deploy/helm/`:
+`scripts/helm-upgrade.sh <env>` runs `helm upgrade --install dagster-<env> dagster/dagster
+--version 1.13.26 -n dagster-<env> --create-namespace --wait --timeout 3m0s` with two values files:
 
 | File | Purpose |
 |------|---------|
-| `values.base.yaml` | Settings shared by all environments: external Postgres (not the chart's built-in one), resource limits, run launcher type, service account config |
-| `values.stage.yaml` | Stage-specific: environment name, catalog name, database name, secret names. Per-user values (Postgres host, Databricks host, image repo) are left blank and filled by `--set` flags from `.env` |
-| `values.prod.yaml` | Same shape as stage, with `prod` names |
+| `deploy/helm/values.base.yaml` | Shared: external Postgres, ClusterIP webserver, `K8sRunLauncher`, 512Mi resource limits |
+| `deploy/helm/values.<env>.yaml` | Per-env: database name, service account, run-pod and code-server env vars, secrets, CSI volume |
 
-The chart deploys these components into the `dagster-<env>` namespace:
+Per-user values appear as `${VAR}` placeholders in the per-env file. The script fills them
+from `.env` with `envsubst`, so committed files stay free of personal values. CI passes
+`--set dagster-user-deployments.deployments[0].image.tag=<sha>`.
 
-| Component | What it does |
-|-----------|-------------|
-| **Webserver** | The Dagster UI (port 3000). Not exposed to the internet — access via [port-forward](../concepts/stop-start.md). |
-| **Daemon** | Runs schedules, sensors, and the run coordinator |
-| **Code server** (user deployments) | Loads your asset definitions from the Docker image |
-| **Run pods** | Spun up per-run by the K8sRunLauncher, then cleaned up |
+Helm also installs the [ARC](arc.md) charts through `scripts/setup-arc.sh`.
 
-### Secrets
+## Key commands & files
 
-Dagster pods need credentials (Postgres password, Databricks SP secret, etc.). These
-come from [Key Vault](../resources/key-vault.md) via the Secrets Store CSI driver, not
-from Kubernetes Secrets or Helm values. The `SecretProviderClass` YAML in `deploy/k8s/`
-defines which Key Vault secrets to mount.
+```bash
+just helm-upgrade stage
+helm list -n dagster-stage
+helm rollback dagster-prod
+```
+
+Files: `scripts/helm-upgrade.sh`, `deploy/helm/`, `deploy/k8s/<env>/secretproviderclass.yaml`.
+
+## Gotchas
+
+- Helm replaces arrays instead of merging them, so each per-env file carries the full
+  `deployments` list.
+- `--wait` makes the command return only when the rollout finishes. A failed pod therefore
+  fails the deploy, and that is what CI relies on.
+- Helm never creates the `SecretProviderClass`. Apply `deploy/k8s/<env>/` separately (see its README).
+- Never set the webserver service to `LoadBalancer` or add an Ingress.
+
+## Cost
+
+Free.
+
+## Managed by
+
+Installed by `scripts/setup-tools.sh`; CI uses `azure/setup-helm@v4` at the same version.
 
 ## Related docs
 
-- [AKS](../resources/aks.md) — the cluster Helm deploys into
-- [Key Vault](../resources/key-vault.md) — where secrets live
-- [Helm deployments](../concepts/helm-deployments.md) — how the deploy flow works
-- [Conventions](../conventions.md) — Helm values structure and resource limits
+- [Helm deployments](../concepts/helm-deployments.md): the deploy flow in detail
+- [Secrets Store CSI driver](secrets-store-csi-driver.md), [Secrets flow](../concepts/secrets-flow.md)
+- [Dagster](dagster.md), [AKS](../resources/aks.md)
+- [Environment parametrization](../concepts/environment-parametrization.md)

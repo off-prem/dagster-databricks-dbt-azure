@@ -1,93 +1,71 @@
 # Helm Deployments
 
-How Dagster gets deployed to [AKS](../resources/aks.md) and what happens when you run
-`just helm-upgrade <env>`.
+> **Type:** Concept · **Scope:** per-env · **Where:** `scripts/helm-upgrade.sh`, `deploy/helm/`
 
-## The deploy flow
+How Dagster gets onto [AKS](../resources/aks.md) and what `just helm-upgrade <env>` does.
+
+## Why we use it
+
+One chart, one script and layered values give identical deployments in stage and prod, while
+personal values stay out of the repo.
+
+## How it's used here
 
 ```
 just helm-upgrade stage
-  → scripts/helm-upgrade.sh stage
-    → reads .env for per-user values (Postgres host, Databricks host, image repo, etc.)
-    → envsubst resolves ${VAR} placeholders in values.stage.yaml → temp file
-    → helm upgrade --install dagster-stage dagster/dagster \
-        -n dagster-stage \
-        -f deploy/helm/values.base.yaml \
-        -f <resolved temp file>
+  -> scripts/helm-upgrade.sh stage
+     -> source .env
+     -> envsubst resolves ${VAR} in values.stage.yaml -> temp file
+     -> helm upgrade --install dagster-stage dagster/dagster --version 1.13.26
+          -n dagster-stage --create-namespace --wait --timeout 3m0s
+          -f values.base.yaml -f <resolved temp file>  [extra flags]
 ```
 
-### What the flags mean
+**Values layering** (later wins): chart defaults, then `values.base.yaml` (external Postgres,
+ClusterIP, run launcher, limits), then `values.<env>.yaml` (database, service account, env vars,
+secrets, CSI volume). Helm replaces lists whole, so the complete `deployments` list lives in each
+per-env file.
 
-| Flag | Purpose |
-|------|---------|
-| `--install` | Create the release if it doesn't exist; update if it does |
-| `-n dagster-stage` | Target Kubernetes namespace |
-| `-f values.base.yaml` | Shared settings (resource limits, Postgres config, etc.) |
-| `-f <resolved>` | Per-env file after envsubst replaces `${VAR}` with `.env` values |
-
-### Values layering
-
-[Helm](../tools/helm.md) merges values files in order (later files override earlier ones):
-
-1. **Chart defaults** — from the Dagster Helm chart
-2. **`values.base.yaml`** — our shared overrides (external Postgres, resource limits,
-   K8sRunLauncher, service account, etc.). Does **not** include the `deployments` array.
-3. **`values.<env>.yaml`** (after envsubst) — the **complete** deployment spec plus
-   environment-specific settings (catalog, DB name, secret names), with per-user values
-   resolved from `.env`.
-
-Helm replaces arrays wholesale rather than merging elements, so the full deployment
-definition (image, port, volumes, env, etc.) lives in each per-env file. `envsubst`
-resolves `${VAR}` placeholders at deploy time so committed files never contain per-user
-values.
-
-## What gets deployed
-
-Each Helm release (`dagster-stage`, `dagster-prod`) creates these in its namespace:
+**What gets deployed** per release:
 
 | Component | Pods | Purpose |
 |-----------|------|---------|
-| Webserver | 1 | Dagster UI. ClusterIP only — access via `just port-forward <env>` |
-| Daemon | 1 | Runs schedules, sensors, run coordinator |
-| Code server | 1 | Loads asset definitions from the Docker image |
-| Run pods | 0–N | Spun up per-run by the K8sRunLauncher; cleaned up after |
+| Webserver | 1 | UI; ClusterIP only |
+| Daemon | 1 | Schedules, sensors, run queue |
+| Code server | 1 | Loads `poc.definitions` from the image |
+| Run pods | 0–N | One per run (`K8sRunLauncher`), removed afterwards |
 
-### Run pod configuration
+**Run pods** inherit only the image. Under `runLauncher.config.k8sRunLauncher` each env file repeats
+the env vars, `envSecrets`, the `azure.workload.identity/use` label, and the CSI volume and mount.
 
-Run pods do **not** inherit env vars, volumes, labels, or secrets from the user
-code deployment. They only inherit the image. Everything else must be configured
-separately under `runLauncher.config.k8sRunLauncher` in the per-env values file:
+**Updating code:** build and push a new image tag, then re-run Helm with
+`--set dagster-user-deployments.deployments[0].image.tag=<sha>` (CI does this).
 
-- `envVars` — environment variables (Databricks host, catalog, etc.)
-- `envSecrets` — K8s Secrets to load (e.g. `dagster-dbx-stage`)
-- `labels` — must include `azure.workload.identity/use: "true"` for Key Vault access
-- `volumes` / `volumeMounts` — CSI secrets-store volume for Key Vault
+## Key commands & files
 
-If a run pod is missing credentials, check this config first — the user deployment
-having them does not mean the run pod does.
+```bash
+just helm-upgrade stage
+helm status dagster-stage -n dagster-stage
+kubectl rollout status deploy -n dagster-stage
+```
 
-### Secrets injection
+## Gotchas
 
-Pods get credentials from [Key Vault](../resources/key-vault.md) via a `SecretProviderClass`
-(defined in `deploy/k8s/<env>/secretproviderclass.yaml`). The Secrets Store CSI driver
-mounts secrets as environment variables. The pod never talks to Key Vault directly — the
-CSI driver does it using [workload identity](workload-identity.md).
+- Missing run-pod config is the usual cause of "credentials not found" in runs, even when the code server has them.
+- `--wait` fails the deploy if pods don't become ready in 3 minutes. Check `kubectl describe pod`.
+- Apply the `SecretProviderClass` before the first Helm install, or pods hang in `ContainerCreating`.
+- Prod upgrades need explicit go-ahead.
 
-## Updating Dagster
+## Cost
 
-To deploy new code:
+Free; pods use existing node capacity.
 
-1. Build a new image: `az acr build --registry <acr> --image poc:<tag> dagster/`
-2. Re-run Helm with the new tag: `just helm-upgrade <env>` (or pass `--set ...image.tag=<tag>`)
-3. Helm performs a rolling update — new pods start, old pods drain
+## Managed by
 
-In [CI/CD](cicd.md), the tag is the git SHA, ensuring traceability.
+`scripts/helm-upgrade.sh`, run locally or by the deploy workflows.
 
 ## Related docs
 
-- [Helm](../tools/helm.md) — the tool and chart configuration
-- [AKS](../resources/aks.md) — the cluster Helm deploys into
-- [Key Vault](../resources/key-vault.md) — secrets mounted by the CSI driver
-- [Workload identity](workload-identity.md) — how pods authenticate to Key Vault
-- [CI/CD](cicd.md) — automated deploys
-- [Conventions](../conventions.md) — values file structure and resource limits
+- [Helm](../tools/helm.md), [Dagster](../tools/dagster.md)
+- [Secrets flow](secrets-flow.md), [Workload identity](workload-identity.md)
+- [Environment parametrization](environment-parametrization.md), [CI/CD](cicd.md)
