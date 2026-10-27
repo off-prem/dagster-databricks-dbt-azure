@@ -1,7 +1,8 @@
 # Setup guide
 
-Step-by-step instructions to stand up the full POC from a fresh clone. Every command is
-listed with what it does and what to expect.
+Stand up the full POC from a fresh clone. Each phase is a single command
+(`just phase <N>`) that runs every step, verifies the result, and pauses at
+manual steps with instructions. Re-running a phase safely skips completed work.
 
 New to Azure or Terraform? The `tools/`, `resources/`, and `concepts/` directories explain
 each component in detail — this guide links to them as they come up. Start here and follow
@@ -10,9 +11,9 @@ the links when you want to understand something deeper.
 **Cost:** ~$50–100/month while running; ~$35–40/month stopped. Phase 0 is free. Costs start
 in Phase 1. Run `just stop` when idle (see [stop/start](concepts/stop-start.md)).
 
-**Naming:** Resource names use the `TF_VAR_project` prefix (default `dagster`). Examples
-below show the default — if you changed it in step 0.5, substitute your project name
-(e.g. `rg-myproject-shared` instead of `rg-dagster-shared`).
+**Naming:** Resource names use the `TF_VAR_project` prefix (default `dagster`). The phase
+runner prompts you to choose this in Phase 0. Examples below show the default — substitute
+your project name if you changed it (e.g. `rg-myproject-shared` instead of `rg-dagster-shared`).
 
 **Reference docs:**
 [Index of every tool, resource and concept](README.md) ·
@@ -20,6 +21,25 @@ below show the default — if you changed it in step 0.5, substitute your projec
 [Costs](costs.md) ·
 [Conventions](conventions.md) ·
 [Decisions](decisions.md)
+
+---
+
+## Quick start
+
+```bash
+git clone git@github.com:<your-org>/<your-repo>.git && cd <your-repo>
+scripts/setup-tools.sh               # install all CLIs (one-time)
+export PATH="$HOME/.local/bin:$PATH"  # add to ~/.bashrc to persist
+just phase 0                          # accounts, tools, bootstrap (~20 min)
+just phase 1                          # shared infrastructure (~15 min, costs begin)
+just phase 2                          # stage environment (~20 min)
+just phase 3                          # dbt and lineage (~5 min)
+just phase 4                          # prod environment (~15 min)
+just phase 5                          # CI/CD (~15 min)
+```
+
+Each phase pauses at manual steps (browser logins, metastore creation, GitHub App
+setup) with instructions and verifies your work before continuing.
 
 ---
 
@@ -33,121 +53,26 @@ below show the default — if you changed it in step 0.5, substitute your projec
 
 ## Phase 0 — Accounts, tools, and bootstrap
 
-This phase costs nothing.
-
-### 0.1 Create your own copy of this repo ✅
-
-Fork or "Use this template," then clone **your fork** — `origin` must point to a repo you
-control. Later, GitHub Actions gets permission to deploy to Azure scoped to the repo in
-your `origin` remote.
-
 ```bash
-git clone git@github.com:<your-org>/<your-repo>.git
-cd <your-repo>
+just phase 0
 ```
 
-Work on branches; merge via PR; never commit directly to `main`.
+This phase costs nothing. The phase runner:
 
-### 0.2 Create an Azure free account ✅
+| Step | What it does | Automated? |
+|------|-------------|------------|
+| 0.1 | Verify repo clone | ✓ |
+| 0.2 | Install CLI tools (`setup-tools.sh`) | ✓ |
+| 0.3 | Azure account and login | Manual — prints instructions, verifies `az login` |
+| 0.4 | GitHub CLI login | Manual — prints instructions, verifies `gh auth status` |
+| 0.5 | Generate `.env` with project settings | Interactive — prompts for project name and region |
+| 0.6 | Register Azure resource providers | ✓ (idempotent, waits for completion) |
+| 0.7 | Terraform bootstrap | ✓ with confirmation — shows plan, asks `Apply? [y/N]` |
+| 0.8 | Configure Terraform backends | ✓ |
+| 0.9 | Sync GitHub variables | ✓ (`setup-ci.sh`) |
+| 0.10 | Validate code projects (dbt parse, Dagster definitions) | ✓ |
 
-Go to [azure.microsoft.com/free](https://azure.microsoft.com/free) and sign up. No
-resources are created yet.
-
-### 0.3 Install CLI tools ✅
-
-```bash
-scripts/setup-tools.sh
-```
-
-Installs pinned versions of all tools into `~/.local/bin` and runs `uv sync` in `dagster/`
-to set up its virtualenv (includes dbt). See [tools/](tools/) for what each tool does.
-Add the bin directory to your PATH:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc   # persist
-```
-
-Verify: `just --version`, `terraform version`, `az version`.
-
-### 0.4 Log in to Azure ✅
-
-```bash
-az login
-az account set --subscription <subscription-id>    # if you have multiple
-az account show --query '{subscription:id, tenant:tenantId}' -o table
-```
-
-See [Azure CLI](tools/azure-cli.md) for more detail. You'll see a **subscription ID**
-(your billing container) and **tenant ID** (your identity directory).
-
-### 0.5 Generate your `.env` file ✅
-
-```bash
-just setup-env
-```
-
-Detects your subscription, tenant, public IP, GitHub repo, and name. Writes them to a
-git-ignored `.env` and scaffolds blank keys for future phases. See [just](tools/just.md)
-for how `.env` auto-loading works.
-
-**Review project settings** — two values have defaults you may want to change **before
-any `terraform apply`** (changing them later means recreating resources):
-
-| Variable | Default | What it controls |
-|----------|---------|-----------------|
-| `TF_VAR_project` | `dagster` | Resource name prefix: `rg-{project}-shared`, `aks-{project}`, `dbw-{project}-stage`, etc. |
-| `TF_VAR_location` | `eastus2` | Azure region for all resources |
-
-Edit `.env` directly if you want different values:
-
-```bash
-# Example: rename everything from dagster → myproject, deploy to West US 2
-sed -i 's/TF_VAR_project="dagster"/TF_VAR_project="myproject"/' .env
-sed -i 's/TF_VAR_location="eastus2"/TF_VAR_location="westus2"/' .env
-```
-
-Verify: `just show-env` — you should see filled-in `TF_VAR_*` values plus blank placeholders.
-
-### 0.6 Register Azure resource providers ✅
-
-Azure groups services into **resource providers** that must be registered on your
-subscription before you can create resources from them. This is free and permanent.
-
-```bash
-for ns in Microsoft.Databricks Microsoft.ContainerService Microsoft.ContainerRegistry \
-  Microsoft.DBforPostgreSQL Microsoft.KeyVault Microsoft.ManagedIdentity Microsoft.Storage; do
-  az provider register -n "$ns"
-done
-```
-
-Verify (all should say `Registered`; wait and re-run if any say `Registering`):
-
-```bash
-for ns in Microsoft.Databricks Microsoft.ContainerService Microsoft.ContainerRegistry \
-  Microsoft.DBforPostgreSQL Microsoft.KeyVault Microsoft.ManagedIdentity Microsoft.Storage; do
-  printf "%-40s %s\n" "$ns" "$(az provider show -n $ns --query registrationState -o tsv)"
-done
-```
-
-### 0.7 Terraform bootstrap ✅
-
-Creates two things: a storage account for [Terraform state](concepts/terraform-state.md)
-(~$0.01/month), and an [Entra app](resources/entra-app.md) for
-[GitHub Actions OIDC](concepts/oidc.md) (free).
-
-This is the only stack that uses local state — see
-[Terraform state](concepts/terraform-state.md) for why.
-
-```bash
-just tf-init bootstrap     # download providers (no resources created)
-just tf-plan bootstrap     # preview — review the + lines
-just tf-apply bootstrap    # create resources (type "yes" to confirm)
-```
-
-See [Terraform](tools/terraform.md) for what init/plan/apply do.
-
-**What it creates:**
+### What it creates
 
 | Resource | Name | Cost |
 |----------|------|------|
@@ -157,133 +82,55 @@ See [Terraform](tools/terraform.md) for what init/plan/apply do.
 | 4 federated credentials | `main`, `environment:stage`, `environment:prod`, `pull_request` | Free |
 | 2 role assignments | Contributor + User Access Administrator | Free |
 
-Capture outputs:
+### Decision point: naming
 
+Step 0.5 prompts you to choose:
+
+| Variable | Default | What it controls |
+|----------|---------|-----------------|
+| `TF_VAR_project` | `dagster` | Resource name prefix: `rg-{project}-shared`, `aks-{project}`, `dbw-{project}-stage`, etc. |
+| `TF_VAR_location` | `eastus2` | Azure region for all resources |
+
+These are baked into resource names. **Changing them later means recreating resources.**
+
+### Manual steps
+
+**Azure account (0.3):** Create at [azure.microsoft.com/free](https://azure.microsoft.com/free),
+then `az login`. The runner verifies your login before continuing.
+
+**GitHub CLI (0.4):** Run `gh auth login`. Used to detect OIDC settings and sync CI variables.
+
+### Troubleshooting
+
+**Session expired:** Azure CLI tokens expire quickly on new accounts (security defaults).
+Re-authenticate:
 ```bash
-just collect-tf bootstrap    # writes AZURE_CLIENT_ID, TF_BACKEND_* to .env
+source scripts/load-env.sh
+az logout
+az login --tenant "$TF_VAR_tenant_id" --scope "https://management.azure.com/.default"
 ```
 
-Verify in Azure:
-
-```bash
-# Resource group exists
-az group show -n rg-dagster-tfstate --query name -o tsv
-
-# Entra app exists
-az ad app list --display-name app-dagster-github --query '[0].displayName' -o tsv
-
-# Storage account reachable
-az storage blob list --account-name "$(grep TF_BACKEND_STORAGE_ACCOUNT .env | cut -d'"' -f2)" \
-  --container-name tfstate --auth-mode key -o table
-```
-
-### 0.8 Set up GitHub repository variables ✅
-
-These tell GitHub how to authenticate to Azure via [OIDC](concepts/oidc.md).
-
-Go to your repo → **Settings** → **Secrets and variables** → **Actions** → **Variables**.
-Create:
-
-| Variable | Value (from `just show-env`) |
-|----------|----------------------------|
-| `AZURE_CLIENT_ID` | `AZURE_CLIENT_ID` |
-| `AZURE_TENANT_ID` | `TF_VAR_tenant_id` |
-| `AZURE_SUBSCRIPTION_ID` | `TF_VAR_subscription_id` |
-
-Create **Environments** `stage` and `prod`. On `prod`, add yourself as **required reviewer**
-(gates prod deploys to your approval). Note: required reviewers on environments need a
-public repo or a paid GitHub plan (Team/Enterprise). If you're on the free plan with a
-private repo, either make it public or skip this — you can add the gate later.
-
-PR checks already live in `.github/workflows/pr-checks.yml`. Open a test PR from a branch
-to verify the workflow passes. (Step 5.1 later automates this whole step with
-`just setup-ci`, so you can also skip ahead to it once Phase 4 is done.)
-
-Verify: the PR check in the **Actions** tab should show a green checkmark. The log should
-show `azure/login@v2` succeeding (not `AADSTS700213`).
-
-### 0.9 Configure Terraform backends ✅
-
-Point the remaining stacks at the remote [state backend](concepts/terraform-state.md):
-
-```bash
-just tf-init shared       # connects to remote state in the storage account
-just tf-init env-stage    # separate state key (stage.tfstate)
-just tf-init env-prod     # separate state key (prod.tfstate)
-```
-
-Each should print `Successfully configured the backend "azurerm"!`
-
-Verify the state files were created in blob storage:
-
-```bash
-az storage blob list \
-  --account-name "$(grep TF_BACKEND_STORAGE_ACCOUNT .env | cut -d'"' -f2)" \
-  --container-name tfstate --auth-mode key -o table
-```
-
-You should see `shared.tfstate`, `stage.tfstate`, and `prod.tfstate`.
-
-**Done when:** All three `init` commands succeed and state files appear in the container.
-
-### 0.10 Validate code projects
-
-```bash
-just verify 0
-```
-
-The verify script checks code projects (`dbt parse`, `dagster definitions validate`).
-Both must pass before moving on.
-
-**Preview the asset graph** — `dagster dev` requires a reachable Databricks host (the dbt
-adapter validates credentials at startup), so it won't work with dummy values. You'll see
-the full lineage graph in Phase 2 after `just port-forward stage`.
+**Done when:** All 10 steps pass. State files in blob storage, GitHub variables synced.
 
 ---
 
 ## Phase 1 — Shared infrastructure
 
+```bash
+just phase 1
+```
+
 This is where costs begin. See [costs](costs.md) for the full breakdown and
 [stop/start](concepts/stop-start.md) for halting resources when idle.
 
-> **Session expired?** Azure CLI tokens expire quickly on new accounts (security defaults).
-> If any command fails with `AADSTS530035`, re-authenticate:
-> ```bash
-> source scripts/load-env.sh
-> az logout
-> az login --tenant "$TF_VAR_tenant_id" --scope "https://management.azure.com/.default"
-> ```
+| Step | What it does | Automated? |
+|------|-------------|------------|
+| 1.1 | Pre-flight: SKU availability checks | ✓ |
+| 1.2 | Apply shared Terraform (`~10-15 min`) | ✓ with confirmation |
+| 1.3 | Verify AKS + Key Vault connectivity | ✓ |
+| 1.4 | Test stop/start (optional) | Skipped — run `just stop`/`just start` manually |
 
-> **SKU not available?** Azure restricts which VM sizes are available per subscription
-> and region. Free-trial subscriptions are especially limited — consider upgrading to
-> Pay-As-You-Go (keeps your remaining credit). If Postgres B-series SKUs aren't available
-> in your region, set `pg_location` to a region where they are (e.g. `centralus`). If AKS
-> B-series VMs aren't available, set `aks_vm_size` to a D-series alternative (e.g.
-> `Standard_D2as_v6`). These variables are in `infra/shared/variables.tf`.
-
-### 1.1 Pre-flight check ✅
-
-Before spending money, verify that the AKS VM size and Postgres SKU you'll
-use are actually available on your subscription. `terraform plan` does not
-catch SKU restrictions — you'd only find out after a multi-minute apply fails.
-
-```bash
-just verify 1    # the SKU pre-flight section runs first
-```
-
-If either SKU fails, the output tells you what to set in `.env` (e.g.
-`TF_VAR_aks_vm_size`, `TF_VAR_pg_location`, `TF_VAR_pg_sku_name`).
-See the "SKU not available?" callout above for details.
-
-### 1.2 Apply shared infrastructure ✅
-
-```bash
-just tf-init shared -upgrade   # pick up new providers (time)
-just tf-plan shared            # preview
-just tf-apply shared           # create (~10-15 min)
-```
-
-**What it creates:**
+### What it creates
 
 | Resource | Est. $/month | Details |
 |----------|-------------|---------|
@@ -292,581 +139,166 @@ just tf-apply shared           # create (~10-15 min)
 | [Key Vault](resources/key-vault.md) | <1 | Secrets store |
 | [Postgres](resources/postgres.md) (B2s) | ~25 running, ~6 stopped | Dagster state |
 | [ADLS Gen2](resources/adls.md) | ~2 | Data lake storage |
-| [AKS](resources/aks.md) (1× `Standard_D2as_v6` by default) | see [costs](costs.md); LB + IP + disk bill when stopped | Kubernetes cluster |
+| [AKS](resources/aks.md) (1× `Standard_D2as_v6` by default) | see [costs](costs.md) | Kubernetes cluster |
 
-Capture outputs:
+### Troubleshooting
 
+**SKU not available:** The pre-flight check (1.1) catches this. If AKS or Postgres SKUs
+aren't available in your region/subscription:
 ```bash
-just collect-tf shared    # writes ACR_NAME, PG_FQDN, KV_NAME, etc. to .env
+just set-env TF_VAR_aks_vm_size Standard_D2as_v6    # or another available size
+just set-env TF_VAR_pg_location centralus            # B-series often available here
 ```
 
-Verify the resources exist:
-
-```bash
-# List all resources in the shared resource group
-az resource list -g rg-dagster-shared -o table
-
-# Check outputs were captured
-just show-env | grep -E 'ACR_NAME|PG_FQDN|KV_NAME|STORAGE_ACCOUNT|AKS_EGRESS'
-```
-
-### 1.3 Verify connectivity ✅
-
-```bash
-az aks get-credentials --resource-group rg-dagster-shared --name aks-dagster
-kubectl get nodes                    # should show one node, status "Ready"
-```
-
-The Postgres admin password was generated automatically by Terraform and stored in
-Key Vault as `pg-admin-password`. You can retrieve it for debugging:
-
-```bash
-az keyvault secret show \
-  --vault-name "$(just show-env | grep KV_NAME | cut -d= -f2 | tr -d '"')" \
-  --name pg-admin-password --query value -o tsv
-```
-
-### 1.4 Test stop/start ✅
-
-```bash
-just stop          # stops AKS + Postgres (~2-3 min)
-just start         # restarts (~3-5 min)
-kubectl get nodes  # verify Ready
-```
-
-See [stop/start](concepts/stop-start.md) for gotchas.
-
-**Done when:** `kubectl get nodes` shows Ready and stop/start round-trips.
-
-**Verify the entire phase before proceeding:**
-
-```bash
-just verify 1
-```
+**Done when:** `kubectl get nodes` shows Ready, all resources in `rg-dagster-shared`.
 
 ---
 
 ## Phase 2 — Stage environment (Goal 1: Dagster talks to Databricks)
 
-### 2.1 Apply stage ✅
-
 ```bash
-just tf-init env-stage -upgrade   # pick up new providers (azuread, databricks, time)
-just tf-plan env-stage
-just tf-apply env-stage
-just collect-tf env-stage
+just phase 2
 ```
 
-Creates: resource group (`rg-dagster-stage`),
-[Databricks workspace](resources/databricks-workspace.md) (`dbw-dagster-stage`),
-Access Connector (`dbac-dagster-stage`),
-[managed identity](resources/managed-identity.md) (`id-dagster-stage`) with federated
-credential and Key Vault access.
+| Step | What it does | Automated? |
+|------|-------------|------------|
+| 2.1 | Apply stage Terraform (workspace, identity) | ✓ with confirmation |
+| 2.2 | First login to Databricks workspace | Manual — prints URL, verifies CLI access |
+| 2.3 | Create Unity Catalog metastore | Manual — prints detailed instructions |
+| 2.4 | Re-apply stage Terraform (catalog, SP, warehouse) | ✓ with confirmation |
+| 2.5 | Apply SecretProviderClass | ✓ |
+| 2.6 | Store dummy API key in Key Vault | ✓ |
+| 2.7 | Verify Databricks CLI auth | ✓ |
+| 2.8 | Deploy Databricks bundle | ✓ |
+| 2.9 | Build and push Docker image (ACR) | ✓ |
+| 2.10 | Deploy Dagster via Helm | ✓ |
+| 2.11 | Smoke test | ✓ (prompted — runs `smoke-test.sh`) |
 
-Databricks objects (catalog, SP, warehouse) are **deferred to step 2.4** — they require
-the metastore from step 2.3.
+### Manual steps
 
-Verify:
+**Databricks login (2.2):** Open the workspace URL (printed by the runner), log in
+with Azure credentials, accept the Premium trial.
 
-```bash
-# Workspace exists
-az resource show --resource-group rg-dagster-stage --name dbw-dagster-stage --resource-type "Microsoft.Databricks/workspaces" --query name -o tsv
+**Unity Catalog metastore (2.3):** One-time setup in the Databricks account console.
+The runner prints the exact values to fill in (ADLS path, Access Connector ID, region).
+See [Unity Catalog](concepts/unity-catalog.md) for background.
 
-# Stage outputs captured
-just show-env | grep DBX_STAGE
-```
+### What it creates
 
-### 2.2 First login to the Databricks workspace ✅
+- Resource group (`rg-dagster-stage`), Databricks workspace, Access Connector,
+  managed identity
+- Catalog `stage`, schemas `bronze`/`silver`, managed volume `landing`
+- Serverless SQL warehouse, service principal, IP access list, UC grants
+- SP credentials in Key Vault
+- Dagster deployment in `dagster-stage` namespace
 
-1. `just show-env` → find `DBX_STAGE_HOST` (the workspace URL)
-2. Open it in a browser, log in with your Azure credentials
-3. Accept the Premium trial if prompted
-4. If workspace ID wasn't captured: `just set-env DBX_STAGE_WORKSPACE_ID <id>`
-   (the number after `?o=` in the workspace URL)
+### Troubleshooting
 
-### 2.3 Create the Unity Catalog metastore ✅
+**Serverless SQL warehouse + ADLS firewall:** The storage account firewall blocks
+serverless compute. You need an Azure Network Security Perimeter (NSP) with the
+`AzureDatabricksServerless` service tag. This is configured in `infra/shared/main.tf`.
 
-One-time manual step — see [Unity Catalog](concepts/unity-catalog.md) for what this is.
-
-1. Go to [accounts.azuredatabricks.net](https://accounts.azuredatabricks.net)
-2. **Catalog** → **Create metastore**
-3. Fill in:
-   - **Name:** `metastore-dagster-eastus2`
-   - **Region:** `eastus2`
-   - **ADLS Gen2 path:** `abfss://metastore@<storage-account>.dfs.core.windows.net/`
-     (`<storage-account>` from `just show-env` → `STORAGE_ACCOUNT_NAME`)
-   - **Access Connector resource ID:** from the Terraform output in 2.1
-4. **Assign** the metastore to the stage workspace
-5. `just set-env TF_VAR_metastore_id <metastore-id>`
-
-### 2.4 Create workspace objects ✅
-
-Now that the metastore is assigned, re-apply to create all Databricks objects:
-
-```bash
-just tf-plan env-stage       # should show catalog, SP, warehouse, grants, KV secrets
-just tf-apply env-stage
-just collect-tf env-stage    # captures SP client ID and warehouse HTTP path
-```
-
-Creates: catalog `stage`, schemas `bronze`/`silver`, managed volume `landing`,
-serverless SQL warehouse, service principal (`sp-dagster-stage`), IP access list,
-UC grants, and SP credentials in Key Vault.
-
-Verify:
-
-```bash
-# Secrets landed in Key Vault
-az keyvault secret list \
-  --vault-name "$(just show-env | grep KV_NAME | cut -d'"' -f2)" \
-  --query '[].name' -o tsv
-
-# Should include: dbx-stage-sp-client-id, dbx-stage-sp-secret, pg-admin-password
-```
-
-### 2.5 Apply the SecretProviderClass ✅
-
-The SecretProviderClass tells the CSI Secrets Store driver which Key Vault secrets
-to sync into K8s Secrets for the Dagster pods.
-
-1. The manifest `deploy/k8s/stage/secretproviderclass.yaml` has three `${VAR}` placeholders
-   (`KV_NAME`, `TF_VAR_tenant_id`, `DAGSTER_STAGE_IDENTITY_CLIENT_ID`). They are resolved from
-   `.env` with `envsubst` when you apply it in step 3, so you don't edit the file.
-
-2. Create the namespace (Helm will also create it, but we need it now):
-
-   ```bash
-   kubectl create namespace dagster-stage --dry-run=client -o yaml | kubectl apply -f -
-   ```
-
-3. Apply:
-
-   ```bash
-   source scripts/load-env.sh
-   envsubst < deploy/k8s/stage/secretproviderclass.yaml | kubectl apply -f -
-   ```
-
-   See [SecretProviderClass](resources/secret-provider-class.md) for what it contains.
-
-### 2.6 Store dummy API key in Key Vault ✅
-
-The `posts` source in `databricks/sources.yml` points to a public API that doesn't need
-a key, but we store a dummy value anyway to test the full Key Vault → pod env → Pipes
-extras → Databricks auth chain. If the chain breaks, you'll know before adding a real
-keyed API later.
-
-```bash
-az keyvault secret set \
-  --vault-name "$(just show-env | grep KV_NAME | cut -d= -f2 | tr -d '"')" \
-  --name source-posts-api-key \
-  --value 'dummy-test-key'
-```
-
-The SecretProviderClass mounts this as `SOURCE_POSTS_API_KEY` on the Dagster pod.
-The extract asset reads it from the pod env and forwards it to Databricks via Pipes extras.
-The entrypoint adds it as an `X-Api-Key` header — jsonplaceholder ignores the header, so
-the extract still succeeds.
-
-### 2.7 Authenticate the Databricks CLI ✅
-
-The bundle deploy and `databricks workspace list` commands need CLI auth. The
-deploy scripts set `DATABRICKS_AUTH_TYPE=azure-cli` so the Databricks CLI reuses
-your existing `az login` session — no separate login step is needed.
-
-Verify:
-
-```bash
-source scripts/load-env.sh && DATABRICKS_HOST="$DBX_STAGE_HOST" DATABRICKS_AUTH_TYPE=azure-cli databricks workspace list /
-```
-
-This should list workspace root contents (`/Users`, `/Shared`, etc.).
-
-### 2.8 Deploy the Databricks bundle ✅
-
-```bash
-just bundle-validate stage    # check config
-just bundle-deploy stage      # deploy extract code to workspace
-```
-
-This deploys `databricks/src/` to `/Workspace/.bundle/dagster/stage/files/`. No DLT
-pipeline is created — the bundle just uploads the Python code that Dagster will submit
-as serverless jobs via Pipes.
-
-Verify the files are in the workspace:
-
-```bash
-databricks workspace ls /Workspace/.bundle/dagster/stage/files/src/extract
-```
-
-### 2.9 Build and push the Dagster image
-
-```bash
-az acr build \
-  --registry "$(just show-env | grep ACR_NAME | cut -d= -f2 | tr -d '"')" \
-  --image poc:latest \
-  --file dagster/Dockerfile \
-  .
-```
-
-Builds the Docker image in the cloud via [ACR](resources/acr.md) — no local Docker needed.
-Run it from the **repo root**: the build context must include `dbt/` and
-`databricks/sources.yml`, which the Dockerfile copies into the image. (CI tags images with
-the git SHA instead of `latest`.)
-
-Verify the image was pushed:
-
-```bash
-az acr repository show-tags \
-  --name "$(just show-env | grep ACR_NAME | cut -d'"' -f2)" \
-  --repository poc -o tsv
-```
-
-### 2.10 Deploy Dagster via Helm
-
-```bash
-just helm-upgrade stage
-```
-
-Deploys Dagster into `dagster-stage`. The Helm values inject `DBX_BUNDLE_ROOT`
-(computed from project name + env) and `DATABRICKS_HOST` into the pod. See
-[Helm deployments](concepts/helm-deployments.md) for how values are layered.
-
-Verify pods are running:
-
-```bash
-kubectl get pods -n dagster-stage    # all pods should be Running/Ready
-```
-
-### 2.11 Smoke test
-
-```bash
-just port-forward stage    # Dagster UI at http://localhost:3000
-```
-
-In the UI: find `raw_posts` in the asset graph, click **Materialize**. Dagster submits a
-serverless job to Databricks via Pipes — the entrypoint fetches the JSONPlaceholder API
-and writes NDJSON to the landing volume.
-
-**What to check:**
-
-- **Dagster UI:** `raw_posts` materializes successfully, metadata shows `num_records` and
-  `volume_path`.
-- **Databricks workspace:** In Catalog → Volumes → `stage.bronze.landing`, a `posts/`
-  directory exists containing a `.json` file.
-- **Auth chain:** The X-Api-Key header was sent (jsonplaceholder ignores it, but the
-  code path is exercised). If the secret wasn't mounted, you'll see a blank header value
-  in the Pipes extras — check the Dagster run logs.
+**dbt-databricks auth warning:** The adapter warns about `azure_client_id` vs `client_id`.
+Both work; we use `client_id`/`client_secret` per the [official docs](https://learn.microsoft.com/en-us/azure/databricks/integrations/configure-oauth-dbt).
 
 **Done when:** `raw_posts` materializes and data appears in the landing volume.
 **→ Goal 1: Dagster on AKS talks to Databricks.**
-
-**Verify the entire phase before proceeding:**
-
-```bash
-just verify 2
-```
 
 ---
 
 ## Phase 3 — dbt and end-to-end lineage (Goal 2: end-to-end pipeline)
 
-### 3.1 Verify dbt connection ✅
-
-`just dbt` auto-fetches `DBX_SP_SECRET` from Key Vault, so no manual export needed:
-
 ```bash
-just dbt stage debug       # verify credentials and warehouse connection
+just phase 3
 ```
 
-(Inside K8s, pods get `DBX_SP_SECRET` from the SecretProviderClass automatically.)
+| Step | What it does | Automated? |
+|------|-------------|------------|
+| 3.1 | Verify dbt connection to stage warehouse | ✓ |
+| 3.2 | Build dbt models (bronze + silver) | ✓ (prompted) |
+| 3.3 | Validate Dagster definitions with live credentials | ✓ |
 
-**Gotcha — serverless SQL warehouse + ADLS firewall:** The storage account firewall
-(`defaultAction: Deny`) blocks serverless compute. Resource access rules for the
-access connector alone are NOT sufficient. You must create an Azure Network Security
-Perimeter (NSP) with the `AzureDatabricksServerless` service tag and associate the
-storage account in Learning/Transition mode. This is done in `infra/shared/main.tf`.
+The phase runner fetches the SP secret from Key Vault automatically.
 
-**Gotcha — dbt-databricks auth fields:** The adapter warns to use `azure_client_id`/
-`azure_client_secret`, but the [official Microsoft docs](https://learn.microsoft.com/en-us/azure/databricks/integrations/configure-oauth-dbt)
-show `client_id`/`client_secret` with `auth_type: oauth` for Databricks OAuth M2M.
-Both work; we use `client_id`/`client_secret` per the docs. The warning is cosmetic.
-
-### 3.2 Build the silver model ✅
-
-```bash
-just dbt stage build       # builds bronze table + silver table
-```
-
-This runs two dbt models:
-
-- **`bronze_posts`** — `read_files()` from the landing volume (JSON files written by `raw_posts`).
-- **`silver_posts`** — selects from `bronze_posts` with column renames.
-
-Verify the data landed:
-
-```bash
-# From the Databricks SQL editor or CLI:
-# SELECT count(*) FROM stage.silver.silver_posts
-# Should return > 0 rows
-```
-
-### 3.3 End-to-end lineage ✅
-
-```bash
-just port-forward stage    # Dagster UI at http://localhost:3000
-```
-
-In the UI: select both `raw_posts` and the dbt assets, click **Materialize all**. Dagster
-shows the full lineage graph: `raw_posts` → `bronze_posts` → `silver_posts`.
+**dbt models:**
+- **`bronze_posts`** — `read_files()` from the landing volume
+- **`silver_posts`** — selects from `bronze_posts` with column renames
 
 **Done when:** `SELECT count(*) FROM stage.silver.silver_posts` > 0 and Dagster shows
-the full lineage from raw to silver.
+the full lineage: `raw_posts` → `bronze_posts` → `silver_posts`.
 **→ Goal 2: end-to-end data pipeline.**
-
-**Verify the entire phase before proceeding:**
-
-```bash
-just verify 3
-```
 
 ---
 
 ## Phase 4 — Prod (Goal 3: stage/prod parity)
 
-### 4.1 Apply prod ✅
-
 ```bash
-just tf-init env-prod -upgrade    # pick up providers if not already done
-just tf-plan env-prod
-just tf-apply env-prod            # Databricks workspace-level resources will fail — expected
-just collect-tf env-prod
+just phase 4
 ```
 
-The apply creates Azure resources (RG, workspace, identity, KV secrets) but Databricks
-workspace-level resources (catalog, schemas, warehouse) fail because you haven't logged
-into the new workspace yet. That's normal — they're created in step 4.3 after the login.
+| Step | What it does | Automated? |
+|------|-------------|------------|
+| 4.1 | Apply prod Terraform (workspace, identity) | ✓ with confirmation |
+| 4.2 | First login to prod workspace | Manual — prints URL, verifies CLI access |
+| 4.3 | Re-apply prod Terraform (catalog, SP, warehouse) | ✓ with confirmation |
+| 4.4 | Apply prod SecretProviderClass | ✓ |
+| 4.5 | Verify dummy API key in Key Vault | ✓ |
+| 4.6 | Deploy to prod (bundle + Helm) | ✓ |
 
-Verify:
+### Manual step
 
-```bash
-az resource show --resource-group rg-dagster-prod --name dbw-dagster-prod --resource-type "Microsoft.Databricks/workspaces" --query name -o tsv
-just show-env | grep DBX_PROD
-```
+**Prod workspace login (4.2):** Same as stage — open the URL, log in, verify metastore
+is assigned. If the prod workspace is in the same region as the metastore, Databricks
+auto-assigns it. If not, assign manually in the account console.
 
-### 4.2 First login to prod workspace ✅
-
-Open `DBX_PROD_HOST`, log in, accept trial. If the workspace is in the same region as
-your existing metastore, Databricks auto-assigns it — verify in the account console under
-**Catalog → Metastore → Workspaces** that `dbw-dagster-prod` appears. If not, assign it
-manually (don't create a new metastore).
-
-### 4.3 Prod workspace objects ✅
-
-```bash
-just tf-plan env-prod      # should show catalog, SP, warehouse, etc.
-just tf-apply env-prod
-just collect-tf env-prod   # captures SP client ID and warehouse HTTP path
-```
-
-### 4.4 Apply prod SecretProviderClass ✅
-
-Same as step 2.5, but for prod. The template uses `${VAR}` placeholders resolved
-via envsubst from `.env`:
-
-```bash
-source scripts/load-env.sh
-kubectl create namespace dagster-prod --dry-run=client -o yaml | kubectl apply -f -
-envsubst < deploy/k8s/prod/secretproviderclass.yaml | kubectl apply -f -
-```
-
-### 4.5 Store dummy API key for prod ✅
-
-```bash
-az keyvault secret set \
-  --vault-name "$(just show-env | grep KV_NAME | cut -d= -f2 | tr -d '"')" \
-  --name source-posts-api-key \
-  --value 'dummy-test-key'
-```
-
-(This secret is shared across envs; if you already set it in Phase 2, skip this.)
-
-### 4.6 Deploy to prod ✅
-
-**Promote, don't rebuild** — prod gets the exact image that passed on stage.
-
-```bash
-just bundle-deploy prod     # deploy extract code to prod workspace (uses az login)
-just helm-upgrade prod      # deploy Dagster with prod env vars
-```
-
-Verify:
-
-```bash
-kubectl get pods -n dagster-prod    # all pods Running/Ready
-just port-forward prod              # materialize raw_posts, then dbt assets
-```
-
-**Done when:** Prod mirrors stage.
+**Done when:** Prod mirrors stage. `kubectl get pods -n dagster-prod` all Running.
 **→ Goal 3: stage/prod parity.**
-
-**Verify the entire phase before proceeding:**
-
-```bash
-just verify 4
-```
 
 ---
 
 ## Phase 5 — CI/CD (Goal 4: automated promotion)
 
+```bash
+just phase 5
+```
+
 See [CI/CD](concepts/cicd.md) for the full workflow architecture.
 
-### 5.1 Sync GitHub variables and environments ✅
+| Step | What it does | Automated? |
+|------|-------------|------------|
+| 5.1 | Sync GitHub variables and environments | ✓ (`setup-ci.sh`) |
+| 5.2 | Grant OIDC SP access to AKS + Databricks | ✓ |
+| 5.3 | Create GitHub App for ARC | Manual — detailed instructions |
+| 5.4 | Install ARC on AKS | ✓ (`setup-arc.sh`) |
+| 5.5 | Verify workflow files | ✓ |
+| 5.6 | First prod promotion | Manual — push a PR, approve the deploy |
 
-The workflows read configuration from **GitHub repository variables** (not secrets — these
-are non-sensitive IDs and URLs). `scripts/setup-ci.sh` reads your `.env` and pushes
-everything CI needs in one shot. It also creates the `stage` and `prod` GitHub environments,
-with you as the required reviewer for `prod`.
+### Manual steps
 
+**GitHub App (5.3):** Create a GitHub App for ARC authentication. The runner prints
+step-by-step instructions including the Key Vault name and the `just set-env` commands
+to record the App ID and Installation ID. See [decision #16](decisions.md) for why ARC
+over GitHub-hosted runners.
+
+**First promotion (5.6):** Push a trivial PR to test the full flow:
+merge → `deploy-stage` → approval → `promote-prod`.
+
+### Workflows
+
+- **pr-checks.yml** — terraform fmt/validate, bundle validate, dbt parse, Dagster
+  definitions load, docker build. Runs on GitHub-hosted runners.
+- **deploy-stage.yml** — ACR build → helm upgrade (stage) → bundle deploy (stage) →
+  smoke test. Runs on ARC.
+- **promote-prod.yml** — same image SHA → helm upgrade (prod) → bundle deploy (prod) →
+  smoke test. Requires `environment: prod` approval. Runs on ARC.
+
+**Pushing workflow files** requires the `workflow` scope:
 ```bash
-just setup-ci --dry-run   # preview what will be set
-just setup-ci             # sync .env → GitHub variables + create environments
+gh auth refresh -s workflow --web=false
 ```
-
-Re-run any time after a terraform apply adds new values to `.env`.
-
-**Verify:** `gh variable list` should show ~18 variables. Settings → Environments should
-show `stage` and `prod` (with your username under required reviewers for `prod`).
-
-### 5.2 Grant the OIDC SP access to AKS and Databricks ✅
-
-The deploy workflows need the GitHub OIDC service principal to have:
-
-1. **AKS RBAC Cluster Admin** — so `helm upgrade` and `kubectl` work from CI.
-   Re-apply the shared Terraform stack (it now includes the role assignment):
-
-   ```bash
-   source scripts/load-env.sh
-   terraform -chdir=infra/shared init -reconfigure \
-     -backend-config="storage_account_name=${TF_BACKEND_STORAGE_ACCOUNT}" \
-     -backend-config="resource_group_name=${TF_BACKEND_RESOURCE_GROUP}" \
-     -backend-config="container_name=tfstate" \
-     -backend-config="key=shared.tfstate"
-   terraform -chdir=infra/shared apply
-   ```
-
-2. **Databricks workspace user with workspace-access entitlement** — so
-   `databricks bundle deploy` works from CI. Add the SP to both workspaces and
-   grant the entitlement (required for the SCIM `/Me` call that `bundle deploy` makes):
-
-   ```bash
-   source scripts/load-env.sh
-   for host_var in DBX_STAGE_HOST DBX_PROD_HOST; do
-     host="${!host_var}"
-     echo "=== ${host_var} (${host}) ==="
-     DATABRICKS_HOST="${host}" databricks service-principals create \
-       --application-id "${AZURE_CLIENT_ID}" --display-name "app-dagster-github" 2>/dev/null || true
-     SP_ID=$(DATABRICKS_HOST="${host}" databricks service-principals list \
-       --filter "applicationId eq '${AZURE_CLIENT_ID}'" -o json | jq -r '.[0].id')
-     echo "  SP ID: ${SP_ID}"
-     DATABRICKS_HOST="${host}" databricks service-principals patch "${SP_ID}" \
-       --json '{"Operations": [{"op": "add", "path": "entitlements", "value": [{"value": "workspace-access"}]}], "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]}'
-     echo "  workspace-access entitlement granted"
-   done
-   ```
-
-**Verify:** `terraform plan` on the shared stack shows no changes. Both Databricks
-workspace Settings → Identity and access → Service principals show `app-dagster-github`
-with the **Workspace access** entitlement checked.
-
-### 5.3 Create GitHub App for ARC ✅
-
-ARC authenticates to GitHub via a GitHub App (preferred over PAT — scoped, auditable, no
-expiry rotation). Create it once per GitHub org/account.
-
-1. **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**
-   - Name: `arc-runner-<project>` (e.g. `arc-runner-dagster`)
-   - Homepage URL: your repo URL
-   - Uncheck "Webhook → Active"
-   - Permissions → Repository: **Administration: Read & Write**, **Metadata: Read-only**
-   - Permissions → Organization: **Self-hosted runners: Read & Write**
-   - Where can this be installed: **Only on this account**
-   - Create, then **Install** on the repo
-2. Generate a private key (Settings → Private keys → Generate) — downloads a `.pem` file
-3. Record the App ID and Installation ID (Settings → Installations → click → URL shows the ID)
-4. Store the private key in Key Vault:
-
-   ```bash
-   source scripts/load-env.sh
-   az keyvault secret set --vault-name "${KV_NAME}" \
-     --name arc-github-app-key \
-     --file <path-to-downloaded-pem-file>
-   ```
-
-5. Add the IDs to `.env`:
-
-   ```bash
-   scripts/setup-env.sh set ARC_GITHUB_APP_ID <app-id>
-   scripts/setup-env.sh set ARC_GITHUB_APP_INSTALLATION_ID <installation-id>
-   ```
-
-### 5.4 Install ARC on AKS ✅
-
-ARC (Actions Runner Controller) runs self-hosted GitHub Actions runners inside AKS.
-Runner pods have direct API server access and egress through the AKS public IP (already
-on the Databricks allow list). No IP whitelisting needed. See [decision #16](decisions.md).
-
-```bash
-source scripts/load-env.sh
-az aks get-credentials --resource-group "rg-${TF_VAR_project}-shared" \
-  --name "aks-${TF_VAR_project}" --overwrite-existing
-scripts/setup-arc.sh
-```
-
-**Verify:** `kubectl get pods -n arc-systems` shows controller + listener Running.
-`kubectl get pods -n arc-runners` is empty (scale-to-zero; runners spawn on workflow trigger).
-
-The script is idempotent — `standup.sh` calls it automatically after cluster recreate.
-To remove ARC: `scripts/setup-arc.sh teardown`.
-
-### 5.5 Activate workflows ✅
-
-Workflow skeletons replaced with full implementations in `.github/workflows/`:
-
-- **pr-checks.yml** — terraform fmt/validate, bundle validate (non-blocking), dbt parse,
-  Dagster definitions load, docker build (no push). It does not run `terraform plan` or `pytest`. Runs on GitHub-hosted runners (read-only, no IP issues).
-- **deploy-stage.yml** — runs on ARC (`runs-on: arc-runner-set`): `az acr build` →
-  helm upgrade (stage) → bundle deploy (stage) → smoke test
-- **promote-prod.yml** — runs on ARC: same image SHA → helm upgrade (prod) →
-  bundle deploy (prod) → smoke test; requires `environment: prod` approval
-
-All workflows authenticate via OIDC (`azure/login@v2`) using GitHub repository variables.
-Scripts get a stub `.env` (`touch .env`) so `load-env.sh` doesn't fail when vars come from
-the CI environment.
-
-**Pushing workflow files** requires the `workflow` scope on your GitHub token. If `git push`
-is rejected with "refusing to allow an OAuth App to create or update workflow," either push
-via SSH (`git remote set-url origin git@github.com:<org>/<repo>.git`) or refresh your token
-with `gh auth refresh -s workflow --web=false`.
-
-### 5.6 First prod promotion ✅
-
-Push a trivial PR. After merge: `deploy-stage` runs automatically → `promote-prod` waits
-for your approval in GitHub → Actions → **Review deployments** → **Approve and deploy**.
-
-### 5.7 Harden ✅
-
-- ~~Restrict the Entra app's RBAC to just the three resource groups + ACR + AKS~~ — deferred to corporate onboarding (single-user POC on a personal subscription; tracked in [improvements.md](improvements.md))
-- ~~Copy `.github/CODEOWNERS.example` to `.github/CODEOWNERS`~~ — deferred to corporate onboarding (requires branch protection and a team)
 
 **Done when:** A trivial PR flows `main → stage → approval → prod`.
-**→ Goal 4: automated promotion.** ✅
-
-**Verify the entire phase:**
-
-```bash
-just verify 5
-```
+**→ Goal 4: automated promotion.**
 
 ---
 
@@ -886,11 +318,13 @@ See [stop/start](concepts/stop-start.md) for gotchas and cost details.
 ```bash
 just --list              # all commands
 just show-env            # current .env
+just phase <N>           # re-run a phase (skips completed steps)
 just port-forward stage  # Dagster UI
 just dbt stage build     # run dbt
 just check-defs          # validate Dagster
 just test                # run tests
 just smoke-test stage    # automated end-to-end test
+just verify <N>          # verify phase N (standalone, no changes)
 ```
 
 ### IP changes

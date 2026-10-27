@@ -85,7 +85,23 @@ scaffold_future_keys() {
   env_scaffold DAGSTER_PROD_IDENTITY_CLIENT_ID ""
 }
 
+prompt_with_default() {
+  local prompt="$1" default="$2" var_name="$3"
+  local reply
+  if [ -t 0 ]; then
+    printf "  %s [%s]: " "${prompt}" "${default}"
+    read -r reply
+    reply="${reply:-${default}}"
+  else
+    reply="${default}"
+  fi
+  eval "${var_name}=\"${reply}\""
+}
+
 detect() {
+  local interactive=false
+  [ "${1:-}" = "--interactive" ] && interactive=true
+
   command -v az >/dev/null || die "az not found: run scripts/setup-tools.sh first."
   az account show >/dev/null 2>&1 || die "Not logged in: run 'az login' first."
 
@@ -111,13 +127,39 @@ detect() {
     echo "Run 'gh auth login' and re-run this script to detect the correct prefix."
   fi
 
-  # Project settings — set defaults, don't overwrite if user already changed them
-  local existing_val
-  existing_val="$(grep "^TF_VAR_project=" "${ENV_FILE}" 2>/dev/null | head -1 | sed 's/^[^=]*=//; s/"//g')"
-  [ -n "${existing_val}" ] || env_set TF_VAR_project "dagster"
-  existing_val="$(grep "^TF_VAR_location=" "${ENV_FILE}" 2>/dev/null | head -1 | sed 's/^[^=]*=//; s/"//g')"
-  [ -n "${existing_val}" ] || env_set TF_VAR_location "eastus2"
+  # Project settings — interactive or default
+  local project location
+  local existing_project existing_location
+  existing_project="$(grep "^TF_VAR_project=" "${ENV_FILE}" 2>/dev/null | head -1 | sed 's/^[^=]*=//; s/"//g')"
+  existing_location="$(grep "^TF_VAR_location=" "${ENV_FILE}" 2>/dev/null | head -1 | sed 's/^[^=]*=//; s/"//g')"
 
+  if $interactive && [ -t 0 ]; then
+    echo ""
+    echo "Project settings"
+    echo "  These values are baked into resource names. Changing them later means"
+    echo "  recreating resources, so choose carefully."
+    echo ""
+    prompt_with_default "Project name (used as prefix: rg-{name}-shared, aks-{name}, etc.)" \
+      "${existing_project:-dagster}" project
+    prompt_with_default "Azure region" \
+      "${existing_location:-eastus2}" location
+    echo ""
+    echo "  Resources will be named: rg-${project}-shared, aks-${project},"
+    echo "  dbw-${project}-stage, etc."
+    echo ""
+
+    # Validate project name (Azure resource names: lowercase, alphanumeric, hyphens)
+    if ! echo "${project}" | grep -qE '^[a-z][a-z0-9-]{0,14}$'; then
+      echo "WARNING: Project name should be lowercase, start with a letter, max 15 chars."
+      echo "         Azure resources have naming limits. Proceeding, but expect errors if too long."
+    fi
+  else
+    project="${existing_project:-dagster}"
+    location="${existing_location:-eastus2}"
+  fi
+
+  env_set TF_VAR_project "${project}"
+  env_set TF_VAR_location "${location}"
   env_set TF_VAR_subscription_id "${sub}"
   env_set TF_VAR_tenant_id "${tenant}"
   env_set TF_VAR_my_ip_cidr "${ip}"
@@ -129,9 +171,12 @@ detect() {
 
   scaffold_future_keys
 
-  echo "Wrote ${ENV_FILE}: subscription ${sub}, ip ${ip}, repo ${repo}, owner ${owner}"
+  echo "Wrote ${ENV_FILE}:"
+  echo "  project=${project}, location=${location}"
+  echo "  subscription=${sub}, ip=${ip}"
+  echo "  repo=${repo}, owner=${owner}"
+  echo ""
   echo "Load it with: source scripts/load-env.sh"
-  echo "Future-phase keys are scaffolded as blank; fill them as you progress through the guide."
 }
 
 collect_tf() {
@@ -223,6 +268,7 @@ case "${1:-}" in
   show)           cat "${ENV_FILE}" ;;
   collect-tf)     shift; collect_tf "$@" ;;
   collect-bundle) shift; collect_bundle "$@" ;;
+  --interactive)  detect --interactive ;;
   "")             detect ;;
-  *)              die "usage: $0 [set KEY VALUE | show | collect-tf <stack> | collect-bundle <env>]" ;;
+  *)              die "usage: $0 [--interactive | set KEY VALUE | show | collect-tf <stack> | collect-bundle <env>]" ;;
 esac

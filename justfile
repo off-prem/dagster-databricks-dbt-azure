@@ -6,15 +6,21 @@ set dotenv-required := false
 
 export PATH := home_directory() / ".local/bin:" + env("PATH")
 
+# ── Phase runners (guided setup) ─────────────────────────────────────────────
+
+# Run a phase of the setup guide (0-5); re-running skips completed steps
+phase n:
+    scripts/phases/phase-{{ n }}.sh
+
 # ── Setup ────────────────────────────────────────────────────────────────────
 
 # Install all CLI tools from .tool-versions
 setup-tools:
     scripts/setup-tools.sh
 
-# Detect env values and scaffold all keys into .env
-setup-env:
-    scripts/setup-env.sh
+# Detect env values and scaffold all keys into .env (--interactive for prompts)
+setup-env *ARGS:
+    scripts/setup-env.sh {{ ARGS }}
 
 # Set a single key in .env
 set-env key value:
