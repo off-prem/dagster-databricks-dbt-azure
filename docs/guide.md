@@ -755,19 +755,29 @@ The deploy workflows need the GitHub OIDC service principal to have:
    terraform -chdir=infra/shared apply
    ```
 
-2. **Databricks workspace user** — so `databricks bundle deploy` works from CI.
-   Add the SP to both workspaces:
+2. **Databricks workspace user with workspace-access entitlement** — so
+   `databricks bundle deploy` works from CI. Add the SP to both workspaces and
+   grant the entitlement (required for the SCIM `/Me` call that `bundle deploy` makes):
 
    ```bash
    source scripts/load-env.sh
-   DATABRICKS_HOST="${DBX_STAGE_HOST}" databricks service-principals create \
-     --application-id "${AZURE_CLIENT_ID}" --display-name "app-dagster-github"
-   DATABRICKS_HOST="${DBX_PROD_HOST}" databricks service-principals create \
-     --application-id "${AZURE_CLIENT_ID}" --display-name "app-dagster-github"
+   for host_var in DBX_STAGE_HOST DBX_PROD_HOST; do
+     host="${!host_var}"
+     echo "=== ${host_var} (${host}) ==="
+     DATABRICKS_HOST="${host}" databricks service-principals create \
+       --application-id "${AZURE_CLIENT_ID}" --display-name "app-dagster-github" 2>/dev/null || true
+     SP_ID=$(DATABRICKS_HOST="${host}" databricks service-principals list \
+       --filter "applicationId eq '${AZURE_CLIENT_ID}'" -o json | jq -r '.[0].id')
+     echo "  SP ID: ${SP_ID}"
+     DATABRICKS_HOST="${host}" databricks service-principals patch "${SP_ID}" \
+       --json '{"Operations": [{"op": "add", "path": "entitlements", "value": [{"value": "workspace-access"}]}], "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"]}'
+     echo "  workspace-access entitlement granted"
+   done
    ```
 
 **Verify:** `terraform plan` on the shared stack shows no changes. Both Databricks
-workspace Settings → Identity and access → Service principals show `app-dagster-github`.
+workspace Settings → Identity and access → Service principals show `app-dagster-github`
+with the **Workspace access** entitlement checked.
 
 ### 5.3 Create GitHub App for ARC ✅
 
