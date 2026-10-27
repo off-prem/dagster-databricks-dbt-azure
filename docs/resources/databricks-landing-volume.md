@@ -28,7 +28,7 @@ Terraform: `databricks_volume.landing` in `infra/env/databricks.tf`. Code: `data
 ## Gotchas
 
 - **No FUSE on Azure serverless:** notebooks can't `open("/Volumes/...")`. All access goes through the SDK Files API
-  ([details](../dagster-pipes-azure-gotchas.md)).
+  ([details](../concepts/dagster-pipes.md#gotchas)).
 - Each extract **overwrites** `latest.json`. History isn't kept unless you change `rest_api.py`.
 - It is a *managed* volume, so deleting the volume deletes the files.
 - Pipes message files accumulate under the volume. Clean them up if the volume grows.

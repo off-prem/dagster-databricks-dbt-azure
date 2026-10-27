@@ -5,8 +5,11 @@ Databricks job through Dagster Pipes (API → landing volume), and dbt models bu
 bronze and silver tables from it.
 Stage and prod environments; CI promotes merged PRs through them.
 
-Start with [`docs/guide.md`](docs/guide.md) — step-by-step from fresh clone to fully
-running, with `just verify <phase>` gates between phases.
+**[System overview](docs/index.md)** — architecture, data flow, and links to every
+tool, resource, and concept in one page.
+
+**[Setup guide](docs/guide.md)** — step-by-step from fresh clone to fully running,
+with `just verify <phase>` gates between phases.
 
 ## Docs
 

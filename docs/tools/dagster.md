@@ -57,4 +57,4 @@ Python dependencies via [uv](uv.md); deployed by `scripts/helm-upgrade.sh` and t
 - [Dagster Pipes](../concepts/dagster-pipes.md), [asset factory](../concepts/asset-factory.md)
 - [Helm](helm.md), [Helm deployments](../concepts/helm-deployments.md)
 - [Postgres](../resources/postgres.md): run history store
-- [Dagster Pipes Azure gotchas](../dagster-pipes-azure-gotchas.md)
+- [Dagster Pipes](../concepts/dagster-pipes.md)
