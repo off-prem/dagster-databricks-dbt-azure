@@ -65,6 +65,21 @@ jobs:
             --overwrite-existing
           kubelogin convert-kubeconfig -l azurecli
 
+      - name: Allow runner IP on AKS API server
+        id: aks-ip
+        run: |
+          PROJECT="${{ env.TF_VAR_project }}"
+          RG="rg-${PROJECT}-shared"
+          CLUSTER="aks-${PROJECT}"
+          RUNNER_IP="$(curl -sf https://ifconfig.me)/32"
+          echo "runner_ip=${RUNNER_IP}" >> "$GITHUB_OUTPUT"
+          CURRENT=$(az aks show -g "$RG" -n "$CLUSTER" \
+            --query "apiServerAccessProfile.authorizedIpRanges | join(',')" -o tsv)
+          echo "original_ranges=${CURRENT}" >> "$GITHUB_OUTPUT"
+          az aks update -g "$RG" -n "$CLUSTER" \
+            --api-server-authorized-ip-ranges "${CURRENT},${RUNNER_IP}"
+          echo "Authorized runner IP ${RUNNER_IP} on AKS"
+
       - name: Helm upgrade (prod)
         run: |
           scripts/helm-upgrade.sh prod \
@@ -92,3 +107,14 @@ jobs:
         run: scripts/smoke-test.sh prod
         env:
           TF_VAR_project: ${{ env.TF_VAR_project }}
+
+      # ── Cleanup: restore original AKS authorized IPs ────────────────────
+      - name: Remove runner IP from AKS API server
+        if: always() && steps.aks-ip.outputs.original_ranges
+        run: |
+          PROJECT="${{ env.TF_VAR_project }}"
+          az aks update \
+            -g "rg-${PROJECT}-shared" \
+            -n "aks-${PROJECT}" \
+            --api-server-authorized-ip-ranges "${{ steps.aks-ip.outputs.original_ranges }}"
+          echo "Restored AKS authorized IPs"

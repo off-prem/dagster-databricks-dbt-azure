@@ -744,10 +744,11 @@ Workflow skeletons replaced with full implementations and moved to `.github/work
 
 - **pr-checks.yml** — terraform fmt/validate, bundle validate, dbt parse, dg check defs,
   pytest, docker build (no push)
-- **deploy-stage.yml** — `az acr build` → helm upgrade (stage) → bundle deploy (stage) →
-  smoke test
-- **promote-prod.yml** — same image SHA → helm upgrade (prod) → bundle deploy (prod) →
-  smoke test; requires `environment: prod` approval
+- **deploy-stage.yml** — `az acr build` → temporarily whitelist runner IP on AKS →
+  helm upgrade (stage) → bundle deploy (stage) → smoke test → restore AKS IP ranges
+- **promote-prod.yml** — same image SHA → temporarily whitelist runner IP on AKS →
+  helm upgrade (prod) → bundle deploy (prod) → smoke test → restore AKS IP ranges;
+  requires `environment: prod` approval
 
 All workflows authenticate via OIDC (`azure/login@v2`) using GitHub repository variables.
 Scripts get a stub `.env` (`touch .env`) so `load-env.sh` doesn't fail when vars come from
