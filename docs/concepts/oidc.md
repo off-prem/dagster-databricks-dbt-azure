@@ -1,68 +1,56 @@
 # OIDC (OpenID Connect)
 
-A protocol that lets one system prove its identity to another without sharing a password.
-In this project, it's how GitHub Actions authenticates to Azure.
+> **Type:** Concept · **Scope:** CI → Azure · **Where:** `infra/bootstrap/`, workflows
 
-## The problem it solves
+A protocol that lets one system prove its identity to another without a shared password.
+Here it is how GitHub Actions authenticates to Azure.
 
-GitHub Actions workflows need to deploy to Azure (push Docker images, run Helm upgrades,
-manage Terraform resources). The traditional approach is to create a secret (a password)
-in Azure and store it in GitHub Secrets. This has downsides:
-- The secret is long-lived (months or years) — if it leaks, an attacker has access until
-  someone notices and rotates it
-- The secret must be manually rotated
-- Anyone with access to the GitHub repo settings can see and copy it
+## Why we use it
 
-## How OIDC works instead
+The usual alternative is a long-lived client secret stored in GitHub. It can leak, needs manual
+rotation, and is visible to anyone with repo admin access. With OIDC there is no secret at all.
 
-With OIDC, there's no shared secret at all:
+## How it's used here
 
-1. **Setup (once):** You create an [Entra app](../resources/entra-app.md) in Azure with
-   **federated credentials** that say: "I trust tokens from GitHub's OIDC provider, but
-   only when the token says it came from `repo:my-org/my-repo` and a specific
-   branch/environment."
+1. **Setup (once):** the [Entra app](../resources/entra-app.md) gets **federated credentials**
+   that say "trust tokens from GitHub's issuer, only for these subjects".
+2. **Each run:** GitHub issues a short-lived JWT for the workflow. `azure/login@v2` presents it to
+   Entra, which checks the issuer and subject against a credential and returns an access token.
 
-2. **At runtime (every workflow run):**
-   - GitHub Actions generates a short-lived JWT token (valid for minutes)
-   - The token says: "I am a workflow running in repo `my-org/my-repo`, branch `main`"
-   - The workflow presents this token to Azure
-   - Azure checks: "Is this token from GitHub's OIDC provider? Does it match one of my
-     federated credentials?" If yes, Azure issues an access token.
-   - The workflow uses the access token to manage Azure resources
+| Credential | Subject | Used when |
+|-----------|---------|-----------|
+| `github-main` | `<prefix>:ref:refs/heads/main` | pushes to `main` |
+| `github-env-stage` | `<prefix>:environment:stage` | jobs with `environment: stage` |
+| `github-env-prod` | `<prefix>:environment:prod` | jobs with `environment: prod` |
+| `github-pull-request` | `<prefix>:pull_request` | PR workflows |
 
-## Federated credentials in this project
+`<prefix>` is your org/repo subject prefix. `setup-env.sh` detects it as `TF_VAR_github_oidc_prefix`.
+Three **repository variables** hold the non-secret IDs: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+`AZURE_SUBSCRIPTION_ID`. The workflow needs `permissions: id-token: write`.
 
-The [Entra app](../resources/entra-app.md) `app-dagster-github` has four federated
-credentials:
+## Key commands & files
 
-| Credential | Matches | Used by |
-|-----------|---------|---------|
-| `github-main` | `<oidc-prefix>:ref:refs/heads/main` | Workflows triggered by pushes to `main` |
-| `github-env-stage` | `<oidc-prefix>:environment:stage` | Workflows targeting the `stage` environment |
-| `github-env-prod` | `<oidc-prefix>:environment:prod` | Workflows targeting the `prod` environment |
-| `github-pull-request` | `<oidc-prefix>:pull_request` | Workflows triggered by pull requests |
+```bash
+just tf-apply bootstrap         # creates app + credentials
+just setup-ci                   # publishes the IDs as repo variables
+```
 
-The `<oidc-prefix>` includes your org and repo IDs (GitHub's immutable subject format).
-`setup-env.sh` auto-detects it via the GitHub API and stores it as `TF_VAR_github_oidc_prefix`.
+## Gotchas
 
-This means only these specific contexts can authenticate — a workflow from a fork or a
-different branch can't.
+- Subjects match exactly. Renaming an environment or the repo breaks sign-in until the credential is updated.
+- A fork's PR can't get a token for these credentials, by design.
+- Tokens last minutes, so long jobs that call Azure late may need a fresh `azure/login`.
 
-## What the workflows need in GitHub
+## Cost
 
-Three **repository variables** (not secrets — these are non-sensitive IDs):
+Free.
 
-| Variable | What it identifies |
-|----------|-------------------|
-| `AZURE_CLIENT_ID` | The Entra app |
-| `AZURE_TENANT_ID` | Your Azure directory |
-| `AZURE_SUBSCRIPTION_ID` | Your billing container |
+## Managed by
 
-The workflow uses `azure/login@v2` with these variables to authenticate.
+[Terraform](../tools/terraform.md) (`infra/bootstrap/`) and `scripts/setup-ci.sh`.
 
 ## Related docs
 
-- [Entra app](../resources/entra-app.md) — the identity that GitHub authenticates as
-- [CI/CD](cicd.md) — the workflows that use OIDC
-- [Workload identity](workload-identity.md) — a similar concept, but for Kubernetes pods
-  authenticating to Azure (instead of GitHub)
+- [Entra app](../resources/entra-app.md), [GitHub Actions](../tools/github-actions.md), [CI/CD](cicd.md)
+- [Workload identity](workload-identity.md): the same idea for pods
+- [Azure RBAC](azure-rbac.md)

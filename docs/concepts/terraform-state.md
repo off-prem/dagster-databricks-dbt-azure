@@ -1,85 +1,54 @@
 # Terraform State
 
-When [Terraform](../tools/terraform.md) creates resources, it needs to remember what it
-created. Otherwise, the next time you run `terraform plan`, it has no idea what already
-exists and would try to create everything from scratch (or worse, create duplicates).
+> **Type:** Concept · **Scope:** all stacks · **Where:** `infra/*/`, [state storage](../resources/tfstate-storage.md)
 
-## What the state file is
+The record of what [Terraform](../tools/terraform.md) has created. Without it, Terraform
+can't tell what already exists.
 
-After `terraform apply` creates resources, Terraform writes a JSON file called
-`terraform.tfstate` that records every resource's ID, properties, and the relationships
-between them. This is the **state file**.
+## Why we use it
 
-For example, after creating a Postgres server, the state file contains the server's Azure
-resource ID, its FQDN, the admin username, and other attributes. When you run
-`terraform plan` next, Terraform reads this file, queries Azure for the current state of
-those resources, and shows you what (if anything) has changed.
+After `apply`, Terraform stores each resource's ID and attributes in a JSON **state** file.
+`plan` compares code, state and reality to decide what to change. Remote state makes it durable and shareable.
 
-**The state file can contain sensitive values** (passwords, connection strings, secret IDs),
-so it should never be committed to git.
-
-## Local state vs. remote state
-
-### Local state (file on disk)
-
-By default, Terraform stores the state file in the working directory
-(`terraform.tfstate`). This is simple but fragile:
-- If your disk dies, the state is lost
-- If someone else needs to run Terraform, they don't have the state
-- CI systems can't access it
-
-### Remote state (cloud storage)
-
-**Remote state** stores the file in a cloud storage service. In this project, we use an
-Azure storage account (created by the `bootstrap` stack) with a blob container called
-`tfstate`. This means:
-- State survives if your laptop dies
-- A CI system or teammate can use the same state
-- Azure handles locking so two people can't modify state at the same time
-
-## How it's set up in this project
+## How it's used here
 
 | Stack | State location | Why |
 |-------|---------------|-----|
-| `bootstrap` | **Local** (`infra/bootstrap/terraform.tfstate`) | This stack *creates* the storage account for remote state. It can't store its own state there because the storage account doesn't exist yet (chicken-and-egg). This file is git-ignored. |
-| `shared` | **Remote** (`tfstate/shared.tfstate` in the storage account) | Durable, shareable |
-| `env` (stage) | **Remote** (`tfstate/stage.tfstate`) | Separate key from prod |
-| `env` (prod) | **Remote** (`tfstate/prod.tfstate`) | Separate key from stage |
+| `bootstrap` | **Local**, `infra/bootstrap/terraform.tfstate` (git-ignored) | It creates the storage account, so it can't use it (chicken and egg) |
+| `shared` | Remote, `tfstate/shared.tfstate` | Durable, shareable, locked |
+| `env` (stage) | Remote, `tfstate/stage.tfstate` | Own key |
+| `env` (prod) | Remote, `tfstate/prod.tfstate` | Own key |
 
-### Why separate state keys for stage and prod?
+`infra/env/` is applied twice with different `.tfvars`, so each env needs its own state key and
+its own `.terraform` directory to avoid mixing resources and cached providers.
 
-The `infra/env/` directory contains one set of `.tf` files that's applied twice — once
-for stage (with `stage.tfvars`) and once for prod (with `prod.tfvars`). Each needs its
-own state file so Terraform doesn't confuse stage resources with prod resources. They
-also get separate `.terraform` directories (`.terraform-stage` and `.terraform-prod`)
-so the initialized providers and cached modules don't collide.
+**Outputs** (resource names with random suffixes, IDs, hosts) are captured into `.env` by
+`scripts/setup-env.sh collect-tf <stack>`, where Helm, dbt and the Databricks CLI read them.
 
-## What to do if you lose the state file
-
-If the local `bootstrap` state file is lost, you can **import** existing resources:
-Terraform can adopt resources it didn't create by mapping them to your `.tf` definitions.
-This is a manual process but fully recoverable.
-
-Remote state in the storage account is durable (replicated by Azure) and versioned
-(blob versioning), so loss is unlikely.
-
-## Outputs
-
-After creating resources, Terraform can **output** specific values. For example, the
-storage account name includes a random suffix (because Azure requires globally unique
-names), so Terraform outputs it so other tools can use it.
-
-We capture outputs into `.env` with:
+## Key commands & files
 
 ```bash
-just collect-tf <stack>
+just tf-init shared
+terraform -chdir=infra/shared output
+scripts/setup-env.sh collect-tf shared
 ```
 
-This runs `terraform output` and writes the values to your `.env` file, where
-[Helm](../tools/helm.md), [dbt](../tools/dbt.md), and the [Databricks CLI](../tools/databricks-cli.md)
-can read them.
+## Gotchas
+
+- State can hold secrets (passwords, SP client secrets). Never commit it, and limit access to the storage account.
+- If local `bootstrap` state is lost, existing resources can be re-adopted with `terraform import`, but it is manual.
+- Two people applying the same stack at once is blocked by blob locking. A crashed run may leave a lock.
+- Never edit state by hand; use `terraform state` commands.
+
+## Cost
+
+Negligible (a few KB of blob storage).
+
+## Managed by
+
+`infra/bootstrap/` creates the storage; `just tf-init` configures each stack's backend.
 
 ## Related docs
 
-- [Terraform](../tools/terraform.md) — the tool that uses state
-- [just](../tools/just.md) — `just tf-init/plan/apply` commands
+- [Terraform](../tools/terraform.md), [State storage](../resources/tfstate-storage.md)
+- [just](../tools/just.md), [Environment parametrization](environment-parametrization.md)

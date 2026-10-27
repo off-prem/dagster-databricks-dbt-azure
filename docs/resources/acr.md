@@ -1,42 +1,51 @@
 # Azure Container Registry (ACR)
 
-A private Docker image registry. When you build a Docker image, it's stored here, and
-[AKS](aks.md) pulls from it when starting pods.
+> **Type:** Resource · **Scope:** shared · **Name:** `acr<project><random>` · **Stack:** `infra/shared`
 
-## Why we need it
+A private Docker image registry. [AKS](aks.md) pulls the Dagster image from here.
 
-The Dagster application (your Python code, dbt project, and dependencies) is packaged as
-a Docker image. ACR stores these images. Using `az acr build`, you can build images in the
-cloud without Docker installed locally — ACR runs the Docker build on its servers.
+## Why we use it
 
-## Configuration
+The Dagster code, dbt project and dependencies are packaged as one [Docker](../tools/docker.md)
+image. ACR stores it, and `az acr build` builds it in the cloud so no local Docker is needed.
+
+## How it's used here
 
 | Setting | Value | Why |
 |---------|-------|-----|
-| SKU | Basic | Cheapest tier. 10 GB storage, sufficient for a POC |
-| Admin user | Disabled | AKS uses its managed identity to pull images (more secure than a password) |
-| Auth | Entra (Azure identity) | No stored credentials needed |
+| SKU | Basic | Cheapest; enough for one image. Premium is out of scope. |
+| Admin user | Disabled | AKS pulls with its own identity; no shared password. |
 
-## How images get built and pulled
+- **Build:** `az acr build --registry <name> --image poc:<git-sha> --file dagster/Dockerfile .`
+  in `deploy-stage.yml`.
+- **Pull:** the AKS kubelet identity has the `AcrPull` role on the registry
+  ([RBAC](../concepts/azure-rbac.md)).
+- **Promotion:** prod deploys the same `poc:<git-sha>` that stage built. Nothing is rebuilt.
 
-1. **Build:** `az acr build --registry <name> --image poc:<tag> dagster/` sends the
-   `dagster/` directory to ACR, which runs `docker build` in the cloud and stores the result.
-2. **Pull:** AKS has an `AcrPull` role assignment on the registry. When a pod starts and
-   needs the image, kubelet pulls it automatically.
+## Key commands & files
 
-In CI, the image is tagged with the git SHA (`poc:<sha>`) so each deploy is traceable.
+```bash
+az acr repository show-tags --name "$ACR_NAME" --repository poc -o table
+```
+
+`ACR_NAME` and the login server (`ACR_LOGIN_SERVER`) are in `.env`.
+
+## Gotchas
+
+- The registry name is random-suffixed and globally unique. Never hardcode it; read it from `.env`.
+- Old tags accumulate (Basic has 10 GB). Delete stale ones if storage fills.
+- `imagePullPolicy: Always` in the Helm values means every pod start pulls the tag again.
 
 ## Cost
 
-~$5/month (Basic tier).
+About $5/month, and it bills even when AKS is stopped or deleted.
 
-## Provisioned by
+## Managed by
 
-[Terraform](../tools/terraform.md) — `infra/shared/` stack.
+[Terraform](../tools/terraform.md), `infra/shared/`.
 
 ## Related docs
 
-- [AKS](aks.md) — pulls images from ACR
-- [Azure CLI](../tools/azure-cli.md) — `az acr build` builds images
-- [CI/CD](../concepts/cicd.md) — how CI builds and tags images
-- [Costs](../costs.md) — full cost breakdown
+- [Docker](../tools/docker.md), [AKS](aks.md)
+- [CI/CD](../concepts/cicd.md): builds and tags
+- [Costs](../costs.md)

@@ -1,10 +1,10 @@
 # Dagster on AKS → Azure Databricks POC
 
 Proof of concept: Dagster (OSS, Helm on AKS) orchestrates Azure Databricks.
-One SDP pipeline ingests an API into a `bronze` table; one dbt model builds `silver`.
+A serverless Databricks job (submitted by Dagster via Pipes) ingests an API into a landing volume; dbt models build `bronze` and `silver` tables from it.
 Two environments (stage, prod); CI promotes main → stage → prod.
 
-Read `docs/guide.md` first. It is the source of truth for setup steps and progress (✅ = done).
+Read `docs/guide.md` first. It is the source of truth for setup steps and progress (✅ = done). `docs/README.md` indexes every tool, resource and concept (same template for each).
 
 ## Non-negotiables
 - **No public ingress.** Dagster UI is ClusterIP only, reached via `kubectl port-forward`. Never create an Ingress or `type: LoadBalancer` Service for Dagster.
@@ -26,12 +26,10 @@ Read `docs/guide.md` first. It is the source of truth for setup steps and progre
 ## Repo map
 - `docs/guide.md` — end-to-end setup walkthrough (start here for a fresh clone)
 - `docs/` — architecture, costs, conventions, decisions, corporate migration
-- `docs/tools/` — per-tool docs: terraform, helm, azure-cli, databricks-cli, kubectl, dbt, just, uv
-- `docs/resources/` — per-resource docs: aks, postgres, key-vault, acr, adls, databricks-workspace, vnet, entra-app, managed-identity
-- `docs/concepts/` — concept docs: cicd, terraform-state, oidc, workload-identity, unity-catalog, helm-deployments, stop-start
+- `docs/tools/`, `docs/resources/`, `docs/concepts/` — one page per tool, resource (including manual setup items such as the GitHub App and the UC metastore) and concept, all following the template in `docs/README.md`. Add a page, and an index row, when you add any of these.
 - `infra/` — Terraform. `bootstrap/` (once), `shared/` (singletons), `env/` (applied per env), `modules/`
 - `dagster/` — one code location, one image
-- `databricks/` — Databricks Asset Bundle (SDP pipeline), targets `stage`/`prod`
+- `databricks/` — Databricks Asset Bundle (extract notebook + `sources.yml`; no pipeline resources), targets `stage`/`prod`
 - `dbt/` — dbt project targeting a Databricks SQL warehouse
 - `deploy/helm/` — Dagster Helm values (base + per env); `deploy/k8s/` — SecretProviderClass etc.
 - `scripts/` — setup-tools, setup-env/load-env, setup-ci, helm-upgrade, bundle-deploy, stop/start, teardown/standup, smoke test, port-forward
@@ -42,7 +40,7 @@ Read `docs/guide.md` first. It is the source of truth for setup steps and progre
 source scripts/load-env.sh                 # load .env (just does this automatically)
 scripts/setup-env.sh                       # detect Phase 0 values, scaffold all future keys
 scripts/setup-env.sh collect-tf shared     # capture terraform outputs into .env
-scripts/setup-env.sh collect-bundle stage  # capture pipeline ID after bundle deploy
+scripts/setup-env.sh collect-bundle stage  # print the bundle root (no .env key written)
 terraform -chdir=infra/env init && terraform -chdir=infra/env plan -var-file=stage.tfvars
 scripts/helm-upgrade.sh stage              # helm upgrade with per-user values from .env
 scripts/bundle-deploy.sh stage             # bundle deploy with DATABRICKS_HOST from .env

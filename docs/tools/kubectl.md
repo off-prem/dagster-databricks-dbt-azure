@@ -1,47 +1,49 @@
 # kubectl
 
-The Kubernetes command-line tool. Talks to your [AKS](../resources/aks.md) cluster to
-check on pods, view logs, and manage resources.
+> **Type:** Tool · **Scope:** local + CI · **Pinned:** 1.36.5 (`.tool-versions`)
+
+The Kubernetes command-line client. It talks to the [AKS](../resources/aks.md) API server.
 
 ## Why we use it
 
-After [Helm](helm.md) deploys Dagster, kubectl is how you inspect what's running, debug
-issues, and access the Dagster UI via port-forwarding.
+After [Helm](helm.md) deploys Dagster, kubectl is how you check pods, read logs and reach
+the UI through a port-forward (there is no public ingress).
 
-## Key commands
+## How it's used here
+
+- `az aks get-credentials` writes the kubeconfig, and [kubelogin](kubelogin.md) converts it
+  to reuse your `az` session. The cluster uses Azure RBAC, so your Azure role decides what you can do.
+- Namespaces: `dagster-stage`, `dagster-prod`, plus `arc-systems` and `arc-runners`.
+- `scripts/port-forward.sh <env>` forwards the webserver service to `localhost:3000`.
+
+## Key commands & files
 
 ```bash
-# Get credentials (run once after AKS is created)
 az aks get-credentials --resource-group rg-dagster-shared --name aks-dagster
-
-# Check node health
-kubectl get nodes                             # Should show one node, status "Ready"
-
-# Check Dagster pods
-kubectl get pods -n dagster-stage             # List pods in the stage namespace
-kubectl logs -n dagster-stage <pod-name>      # View logs for a specific pod
-
-# Port-forward the Dagster UI (or use `just port-forward stage`)
-kubectl port-forward -n dagster-stage svc/dagster-stage-webserver 3000:80
-
-# Debug a failing pod
-kubectl describe pod -n dagster-stage <pod-name>   # Events, status, restart reasons
+kubelogin convert-kubeconfig -l azurecli
+kubectl get nodes
+kubectl get pods -n dagster-stage
+kubectl logs -n dagster-stage <pod>
+kubectl describe pod -n dagster-stage <pod>
+just port-forward stage
 ```
 
-## How it authenticates
+## Gotchas
 
-`az aks get-credentials` writes a kubeconfig file (`~/.kube/config`) that kubectl reads.
-The cluster uses Entra RBAC, so your Azure identity determines what you can do. Locally
-this is your `az login` session; in CI it's the [OIDC](../concepts/oidc.md) identity.
+- The pin must stay within one minor version of the AKS Kubernetes version.
+- The API server only accepts your IP (authorized ranges). If you get a timeout after moving
+  networks, update `TF_VAR_my_ip_cidr` and re-apply `shared`. See [network access](../concepts/network-access.md).
+- A stopped cluster refuses connections. Run `just start` first.
 
-## How it's installed
+## Cost
 
-`scripts/setup-tools.sh` installs the version pinned in `.tool-versions`. The version
-must stay within one minor of the AKS server version.
+Free.
+
+## Managed by
+
+Installed by `scripts/setup-tools.sh`.
 
 ## Related docs
 
-- [AKS](../resources/aks.md) — the cluster kubectl talks to
-- [Helm](helm.md) — deploys the resources kubectl inspects
-- [Stop/start](../concepts/stop-start.md) — uses `az` to stop/start the cluster, then
-  kubectl to verify
+- [AKS](../resources/aks.md), [kubelogin](kubelogin.md), [Helm](helm.md)
+- [Stop/start](../concepts/stop-start.md)

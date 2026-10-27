@@ -14,10 +14,10 @@ application code.
 | Egress control | NAT Gateway or UDR to company firewall on `snet-aks`; allowlist Databricks, PyPI (or internal mirror), ACR | `modules/aks` outbound type | Possibly pin PyPI mirror in Dockerfile. |
 | Separate subscriptions per env | `infra/env` applied with a different `subscription_id`; `shared` split into hub items (ACR, DNS) and per-env items (Postgres becomes per env) | `infra/` backends + providers | None. |
 | Separate AKS cluster per env | Second cluster from the same module; Helm context changes | `modules/aks`, CI `az aks get-credentials` | None. |
-| Classic Databricks compute / no serverless | VNet-injected workspaces, Secure Cluster Connectivity, NAT; pipelines on classic compute; SQL warehouse Pro | `modules/databricks-workspace`, bundle `resources/*.yml` | Bundle YAML only. |
+| Classic Databricks compute / no serverless | VNet-injected workspaces, Secure Cluster Connectivity, NAT; submit the extract task on classic compute instead of serverless (add a cluster spec to the Pipes task); SQL warehouse Pro | `infra/env`, `dagster/src/poc/assets/extract.py` | Task spec in the extract asset; the Pipes FUSE workaround may no longer be needed. |
 | Existing Unity Catalog metastore | Skip metastore creation; attach workspaces; request catalogs | Guide step 2.3 | None. |
-| Existing identity standards | Replace SP secret with workload-identity federation to the Databricks SP; Entra auth for Postgres | Key Vault secrets removed; Helm env | Minor: auth type in `resources.py`/`profiles.yml`. |
-| CI must run inside the network | Self-hosted runners (Container Apps job or VMSS) in the VNet; or Azure DevOps agents | `.github/workflows` `runs-on` | None. |
+| Existing identity standards | Replace SP secret with workload-identity federation to the Databricks SP; Entra auth for Postgres | Key Vault secrets removed; Helm env | Minor: auth type in `assets/extract.py` and `dbt/profiles.yml`. |
+| CI must run inside the network | Already satisfied for deploys: [ARC](tools/arc.md) runners run inside AKS. Make `pr-checks` self-hosted too, or use Azure DevOps agents | `.github/workflows` `runs-on` | None. |
 | Logging/monitoring mandates | Container Insights / Log Analytics, Databricks system tables export, Dagster → OTEL | `infra/`, Helm | None. |
 | Tagging/naming/policy (Azure Policy) | Adjust [conventions.md](conventions.md); policy may require specific SKUs, encryption, or deny public access (which this design already tolerates) | `infra/` | None. |
 | Secrets scanning / SBOM / image signing | Add steps to `pr-checks.yml` / `deploy-stage.yml` | CI | None. |

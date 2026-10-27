@@ -1,83 +1,58 @@
 # just
 
-A command runner (similar to `make`, but simpler). The `justfile` at the repo root defines
-shortcuts for every common operation in the project.
+> **Type:** Tool · **Scope:** local · **Pinned:** 1.36.0 (`.tool-versions`)
+
+A command runner, like `make` but simpler. The root `justfile` holds a named recipe for every
+common operation.
 
 ## Why we use it
 
-This project uses many tools (Terraform, Helm, az, dbt, databricks, kubectl) with different
-flags and environment variables. `just` wraps them into simple, consistent commands and
-**automatically loads your `.env` file** so you never have to remember to source it.
+The project uses many CLIs with different flags and env vars. `just` wraps them in consistent
+commands and **loads `.env` automatically**, so you don't have to remember to source it.
 
-## Key commands
+## How it's used here
 
-Run `just --list` to see everything. Highlights:
+The top of the `justfile` sets `set dotenv-load` and `set dotenv-required := false`. Every
+key in `.env` is exported before a recipe runs. If `.env` is missing, recipes still run
+(useful for `setup-env`). It also puts `~/.local/bin` on `PATH` so pinned tools are found.
 
-### Setup
-```bash
-just setup-tools          # Install all CLIs from .tool-versions
-just setup-env            # Detect values and scaffold .env
-just show-env             # Print current .env
-just set-env KEY VALUE    # Set one key in .env
-just collect-tf <stack>   # Capture Terraform outputs into .env
-just collect-bundle <env> # Capture pipeline ID after bundle deploy
-```
-
-### Terraform
-```bash
-just tf-init <stack>      # terraform init (stack: bootstrap, shared, env-stage, env-prod)
-just tf-plan <stack>      # terraform plan
-just tf-apply <stack>     # terraform apply
-```
-
-### Deploy
-```bash
-just helm-upgrade <env>       # Deploy Dagster via Helm
-just bundle-validate <env>    # Validate Databricks bundle
-just bundle-deploy <env>      # Deploy Databricks bundle
-```
-
-### Develop and test
-```bash
-just dbt <env> <cmd>      # Run dbt (e.g., just dbt stage build)
-just check-defs           # Validate Dagster definitions
-just test                 # Run Python tests
-```
-
-### Operate
-```bash
-just port-forward <env>   # Dagster UI at http://localhost:3000
-just smoke-test <env>     # Automated end-to-end test
-just stop                 # Stop AKS + Postgres (save money)
-just start                # Start them back up
-```
-
-## How `.env` loading works
-
-The `justfile` has these settings at the top:
-
-```just
-set dotenv-load
-set dotenv-required := false
-```
-
-This tells `just` to automatically read `.env` and export every key as an environment
-variable before running any recipe. If `.env` doesn't exist yet, it continues without
-error (`dotenv-required := false`).
-
-It also prepends `~/.local/bin` to `PATH`, so tools installed by `scripts/setup-tools.sh`
-are always found.
-
-## Without `just`
-
-If you can't use `just` (e.g., in a CI environment), source the env file manually:
+Without `just` (for example in Claude's shell, or in CI), load the env yourself:
 
 ```bash
 source scripts/load-env.sh
 ```
 
-Then run the underlying commands directly (check the `justfile` to see what each recipe runs).
+and run the underlying command shown in the recipe.
+
+## Key commands & files
+
+`just --list` shows everything. Groups:
+
+| Group | Recipes |
+|-------|---------|
+| Setup | `setup-tools`, `setup-env`, `set-env`, `show-env`, `collect-tf`, `collect-bundle`, `setup-arc`, `setup-ci` |
+| Terraform | `tf-init`, `tf-plan`, `tf-apply` (stack: `bootstrap`, `shared`, `env-stage`, `env-prod`) |
+| Deploy | `helm-upgrade`, `bundle-validate`, `bundle-deploy` |
+| Develop | `dbt <env> <cmd>`, `check-defs`, `test`, `verify <phase>` |
+| Operate | `port-forward`, `smoke-test`, `stop`, `start`, `teardown`, `standup`, `destroy-all` |
+
+## Gotchas
+
+- `just` isn't available in Claude's shell, so scripts that need `.env` must source
+  `scripts/load-env.sh` themselves.
+- `.env` is git-ignored. Never move per-user values into the `justfile`.
+- Recipe names take positional arguments, for example `just tf-plan env-stage`, not flags.
+
+## Cost
+
+Free.
+
+## Managed by
+
+Installed by `scripts/setup-tools.sh`.
 
 ## Related docs
 
-- [Conventions](../conventions.md) — the full list of `just` recipes and when to use them
+- [Environment parametrization](../concepts/environment-parametrization.md): how `.env` feeds every tool
+- [Terraform](terraform.md), [Helm](helm.md)
+- [Conventions](../conventions.md)

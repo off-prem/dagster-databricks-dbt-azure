@@ -6,12 +6,13 @@ the current workaround (if any), and the proper fix.
 
 ## Active issues
 
-### Run pod OOM at 512Mi
+### Run pod memory sizing (OOM history)
 - **Discovered:** Phase 2.11 smoke test
-- **Symptom:** Run pods killed with OOMKilled before Databricks job is submitted
-- **Cause:** The multiprocess executor spawns a parent process + child subprocess per step, each loading the full code location (including dbt parse via `DAGSTER_DBT_PARSE_PROJECT_ON_LOAD`). Two processes exceed 512Mi.
-- **Workaround:** Set user deployment `resources` to 1Gi in per-env values files. The Dagster Helm chart bakes user deployment resources into `DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT`, which deep-merges on top of the run launcher config — so run launcher `resources` and `runK8sConfig` are both overridden. The user deployment resources control both the code server pod and run pods.
-- **Proper fix:** Profile actual memory usage with `kubectl top pods` once running, right-size the limit. For complex pipelines, consider the `k8s_job_executor` (one pod per step) instead of multiprocess.
+- **Symptom:** Run pods were killed with OOMKilled at 512Mi before the Databricks job was submitted.
+- **Cause:** The multiprocess executor spawns a parent process plus a child process per step, each loading the full code location (including dbt parse via `DAGSTER_DBT_PARSE_PROJECT_ON_LOAD`).
+- **History:** Resources were raised (1Gi, then 2Gi for user deployments). The Dagster Helm chart bakes user-deployment resources into `DAGSTER_CLI_API_GRPC_CONTAINER_CONTEXT`, which deep-merges over the run launcher config, so the user deployment's `resources` also size the run pods. Commit `151c2f7` then cut them back to 512Mi because measured usage was about 320Mi and 2Gi requests starved the single node during rolling updates.
+- **Current state:** 512Mi request and limit for webserver, daemon, code server and run pods (`deploy/helm/`). **Re-verify**: the original OOM happened at 512Mi, so watch `kubectl top pods` and run-pod exit codes. If OOMKilled returns, raise the user-deployment limit rather than the run launcher's.
+- **Proper fix:** Right-size from measurements. For complex pipelines, consider `k8s_job_executor` (one pod per step) instead of multiprocess.
 
 ### Node disk pressure at 32GB
 - **Discovered:** Phase 2 debugging (repeated image rebuilds)

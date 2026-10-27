@@ -1,45 +1,58 @@
-# Entra App Registration
+# Entra App Registration (CI identity)
 
-An identity in Microsoft Entra ID (formerly Azure Active Directory) that represents an
-application — in this case, GitHub Actions. When a GitHub Actions workflow runs, it
-authenticates as this app to create and manage Azure resources.
+> **Type:** Resource · **Scope:** shared (one app) · **Name:** `app-<project>-github` · **Stack:** `infra/bootstrap`
 
-## Why we need it
+An identity in Microsoft Entra ID that represents GitHub Actions. Workflows sign in as this
+app to deploy.
 
-CI/CD workflows need permission to deploy to Azure (push Docker images, run Helm upgrades,
-deploy Databricks bundles). Instead of storing a password or secret in GitHub, we use
-[OIDC](../concepts/oidc.md) — GitHub proves its identity with a short-lived token, and
-Azure trusts it because we've pre-registered the trust relationship.
+## Why we use it
 
-## Configuration
+CI must push images, upgrade Helm releases and deploy bundles. Instead of a stored password,
+the app trusts short-lived GitHub tokens through [OIDC](../concepts/oidc.md), so there is
+no secret to leak or rotate.
 
-| Setting | What it is |
-|---------|-----------|
-| Display name | `app-dagster-github` |
-| Federated credentials (×4) | Trust rules for `:ref:refs/heads/main`, `:environment:stage`, `:environment:prod`, `:pull_request`. Only these specific GitHub contexts can authenticate. Subjects use the OIDC prefix (includes org/repo IDs when immutable subjects are enabled). |
-| Contributor role | Can create, update, and delete Azure resources in the subscription |
-| User Access Administrator role | Can assign roles to other identities (needed to grant AKS, managed identities, etc. their permissions) |
+## How it's used here
 
-### What are federated credentials?
+| Item | Detail |
+|------|--------|
+| Federated credentials (4) | `github-main` (`ref:refs/heads/main`), `github-env-stage`, `github-env-prod` (`environment:<env>`), `github-pull-request` |
+| Subject prefix | `TF_VAR_github_oidc_prefix` (includes org and repo IDs), detected by `setup-env.sh` |
+| Subscription roles | Contributor and User Access Administrator ([RBAC](../concepts/azure-rbac.md)) |
+| Cluster role | AKS RBAC Cluster Admin, granted from `shared` when `github_sp_client_id` is set |
+| Databricks | Needs `workspace-access` and `CAN_MANAGE` on the bundle folder |
 
-Normally, an app would authenticate with a client secret (a password). Federated credentials
-replace this — instead of a shared secret, they say "I trust tokens issued by GitHub's OIDC
-provider, but only when the token says it came from this specific repo and branch/environment."
-This means:
-- No secret is stored in GitHub (nothing to rotate or leak)
-- Only the specific repo/branch/environment combinations you registered can authenticate
-- Tokens are short-lived (valid for minutes, not months)
+The three IDs (client, tenant, subscription) are stored as GitHub repository **variables**,
+not secrets.
+
+## Key commands & files
+
+```bash
+just tf-apply bootstrap
+scripts/setup-env.sh collect-tf bootstrap
+just setup-ci
+```
+
+Terraform: `infra/bootstrap/main.tf`.
+
+## Gotchas
+
+- A federated credential matches the subject **exactly**. A new environment or branch
+  pattern needs a new credential.
+- User Access Administrator is powerful because the app can grant roles. Keep the repo's
+  `main` protected by review, since `main` can deploy.
+- The Databricks side of the identity is set up in the workspace (entitlement, bundle permissions),
+  not in Azure.
 
 ## Cost
 
-Free. App registrations, service principals, and federated credentials have no cost.
+Free.
 
-## Provisioned by
+## Managed by
 
-[Terraform](../tools/terraform.md) — `infra/bootstrap/` stack.
+[Terraform](../tools/terraform.md), `infra/bootstrap/` (applied once, state kept locally).
 
 ## Related docs
 
-- [OIDC](../concepts/oidc.md) — how the authentication flow works
-- [CI/CD](../concepts/cicd.md) — the workflows that authenticate as this app
-- [Terraform](../tools/terraform.md) — the bootstrap stack that creates the app
+- [OIDC](../concepts/oidc.md), [CI/CD](../concepts/cicd.md), [GitHub environments](github-environments.md)
+- [Azure RBAC](../concepts/azure-rbac.md)
+- [Databricks service principal](databricks-service-principal.md): the *other* principal, used by Dagster
