@@ -83,6 +83,7 @@ jobs:
         env:
           DBX_STAGE_HOST: ${{ vars.DBX_STAGE_HOST }}
           DBX_STAGE_SP_CLIENT_ID: ${{ vars.DBX_STAGE_SP_CLIENT_ID }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
 
       # ── Smoke test ───────────────────────────────────────────────────────
       - name: Smoke test (stage)

@@ -25,6 +25,10 @@ bundle:
 variables:
   catalog:
     description: Unity Catalog catalog for this environment
+  ci_sp_client_id:
+    description: OIDC service principal application ID (AZURE_CLIENT_ID) — grants CI deploy access
+  run_as_sp_client_id:
+    description: Per-env Databricks service principal application ID — runs jobs and has CAN_MANAGE
 
 # Uncomment this to split resource definitions (jobs, pipelines) into
 # separate YAML files in a resources/ directory:
@@ -36,6 +40,16 @@ variables:
 # production area (/Workspace/.bundle/dagster/<target>/files/).
 workspace:
   root_path: /Workspace/.bundle/${bundle.name}/${bundle.target}
+
+# Grant the CI service principal (OIDC app) CAN_MANAGE so it can deploy.
+# The run_as identity is the per-env Databricks SP that runs jobs.
+# You must redeploy from your own account once after adding these so the
+# existing state directory picks up the new permissions.
+permissions:
+  - service_principal_name: ${var.ci_sp_client_id}
+    level: CAN_MANAGE
+  - service_principal_name: ${var.run_as_sp_client_id}
+    level: CAN_MANAGE
 
 targets:
   stage:
