@@ -76,7 +76,7 @@ jobs:
 
       - name: Install Python dependencies
         working-directory: dagster
-        run: uv sync --frozen --no-dev
+        run: uv sync --frozen
 
       - name: dbt deps + parse
         working-directory: dbt
