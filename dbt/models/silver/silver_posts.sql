@@ -3,4 +3,4 @@ SELECT
   userId AS user_id,
   title,
   body
-FROM {{ ref('posts') }}
+FROM {{ ref('bronze_posts') }}
