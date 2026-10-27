@@ -82,11 +82,6 @@ jobs:
           DBX_PROD_WAREHOUSE_HTTP_PATH: ${{ vars.DBX_PROD_WAREHOUSE_HTTP_PATH }}
           DAGSTER_PROD_IDENTITY_CLIENT_ID: ${{ vars.DAGSTER_PROD_IDENTITY_CLIENT_ID }}
 
-      - name: Wait for rollout (prod)
-        run: |
-          NS="${TF_VAR_project}-prod"
-          kubectl rollout status deployment -n "$NS" --timeout=180s
-
       # ── Bundle deploy to prod (same SHA) ─────────────────────────────────
       - name: Install Databricks CLI
         run: |

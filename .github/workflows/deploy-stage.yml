@@ -73,11 +73,6 @@ jobs:
           DBX_STAGE_WAREHOUSE_HTTP_PATH: ${{ vars.DBX_STAGE_WAREHOUSE_HTTP_PATH }}
           DAGSTER_STAGE_IDENTITY_CLIENT_ID: ${{ vars.DAGSTER_STAGE_IDENTITY_CLIENT_ID }}
 
-      - name: Wait for rollout (stage)
-        run: |
-          NS="${TF_VAR_project}-stage"
-          kubectl rollout status deployment -n "$NS" --timeout=180s
-
       # ── Bundle deploy to stage ───────────────────────────────────────────
       - name: Install Databricks CLI
         run: |
