@@ -80,6 +80,21 @@ jobs:
             --api-server-authorized-ip-ranges "${CURRENT},${RUNNER_IP}"
           echo "Authorized runner IP ${RUNNER_IP} on AKS"
 
+      - name: Wait for AKS API server to accept runner IP
+        run: |
+          echo "Waiting for AKS API server to become reachable (up to 3 min)..."
+          for i in $(seq 1 18); do
+            if kubectl cluster-info >/dev/null 2>&1; then
+              echo "AKS API server reachable after $((i * 10))s"
+              break
+            fi
+            if [ "$i" -eq 18 ]; then
+              echo "AKS API server still unreachable after 180s" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
       - name: Helm upgrade (prod)
         run: |
           scripts/helm-upgrade.sh prod \
