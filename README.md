@@ -39,9 +39,12 @@ costs, and troubleshooting.
 ### Adopt into an existing repo
 
 Pull specific components (Terraform, Helm, dbt, CI/CD) into your team's codebase.
-Read **[docs/adapt.md](docs/adapt.md)** for the component map and intake questions.
-Use Claude with access to both repos to generate a tailored adoption plan.
-See the [example plan](docs/adoption-plan-example.md) for what the output looks like.
+Open Claude Code with access to both repos and run `/adopt` — the skill walks through
+understanding both repos, analyzing incompatibilities, generating a phased adoption plan,
+and executing the migration upon approval.
+
+See **[docs/adapt.md](docs/adapt.md)** for the component map and intake questions, and
+the [example plan](docs/adoption-plan-example.md) for what the output looks like.
 
 ## After setup
 
