@@ -191,6 +191,6 @@ teardown:
 standup:
     scripts/standup.sh
 
-# Destroy ALL provisioned resources (start fresh)
-destroy-all:
-    scripts/destroy-all.sh
+# Destroy ALL provisioned resources (start fresh; -y to skip prompts)
+destroy-all *ARGS:
+    scripts/destroy-all.sh {{ ARGS }}

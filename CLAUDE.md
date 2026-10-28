@@ -15,12 +15,11 @@ Read `docs/guide.md` first. It is the source of truth for setup steps and progre
 - **Lean.** Build only what `docs/costs.md` lists. No VPN, no private endpoints, no Premium ACR, no second AKS cluster. If something seems missing, check `docs/decisions.md` before adding it.
 
 ## Adaptation workflow
-When someone asks to adapt this repo into their existing codebase, follow `docs/adapt.md`:
-1. Ask the intake questions (team, infra, codebase, requirements).
-2. Read their target repo to understand its structure and conventions.
-3. Use the component map to determine what to adopt, adapt, or skip.
-4. Generate a tailored adoption plan and save it in their repo as `docs/adoption-plan.md`.
-See `docs/adoption-plan-example.md` for an example of the output.
+When someone asks to adapt this repo into their existing codebase, use the `/adopt` skill.
+It covers the full lifecycle: understanding both repos, analyzing incompatibilities,
+generating a phased adoption plan, and executing the migration upon approval.
+See `docs/adapt.md` for the component map and intake questions, and
+`docs/adoption-plan-example.md` for an example plan.
 
 ## Rules for Claude Code
 - Before any step that needs the Azure portal, Databricks account console, a browser login, a trial acceptance, or pasting a credential: **stop and hand it to the user** with exact click-by-click instructions and tell them what value(s) to bring back.
