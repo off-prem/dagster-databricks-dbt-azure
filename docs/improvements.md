@@ -93,6 +93,24 @@ Items to investigate before running concurrent workloads. Not blocking the POC.
 - Current: everything on one node, no anti-affinity or disruption budgets
 - Plan: PDBs for daemon/webserver, anti-affinity to spread across nodes
 
+## Setup efficiency
+
+### Parallel provisioning and pre-flight validation
+- **Status:** TODO
+- **Problem:** The phase runner executes everything serially: Phase 2 (stage) must fully complete before Phase 4 (prod) begins, and within Phase 2, steps like Docker image build block on Terraform and manual steps they don't depend on. A full setup takes ~90 minutes wall clock, much of it waiting.
+- **Opportunity:** The dependency graph allows significant parallelism:
+  - **Docker image build** only needs ACR (Phase 1). It can run alongside the entire Phase 2 TF apply + manual steps chain, saving 2–3 minutes.
+  - **After metastore creation**, prod TF apply is independent of stage deploy. Both environments' infra could provision in parallel.
+  - **Within each env**, SecretProviderClass, Key Vault secrets, and bundle deploy are independent of each other and could run in parallel after TF apply completes. Helm waits for all three.
+  - **GitHub App creation** (Phase 5) is pure browser clicking with no cloud dependency — it could be prompted during Phase 0.
+- **Approach:** Validate before deploying, then deploy in parallel. The phases currently interleave validation with provisioning (create a resource, check it, create the next). A better model:
+  1. **Pre-flight**: verify prerequisites, check resource availability (region capacity, provider registration, quota), validate all Terraform and configuration up front
+  2. **Confirm**: show the user what will be created and the estimated cost
+  3. **Provision**: run independent steps in parallel (backgrounded subshells or `&` with `wait`)
+  4. **Verify**: confirm everything is healthy
+- **Trade-off:** The current serial approach catches problems early — a broken stage stops you before spending money on prod. Parallel provisioning should be opt-in (e.g. `just phase 2 --with-prod` or a `just setup-all` fast path) with the serial path remaining the default for first-time users.
+- **See also:** Phase reorganization — merging Phase 3 (dbt verification) into Phase 2, and splitting Phase 0 (workstation vs cloud bootstrap) would also improve the flow.
+
 ## Monitoring & observability
 
 ### No monitoring stack
